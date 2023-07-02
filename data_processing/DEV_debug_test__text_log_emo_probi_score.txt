@@ -1,0 +1,328 @@
+0 Prompt: Yeah about 10 years ago I had a horrifying experience. It was 100% their fault but they hit the water barrels and survived. They had no injuries but they almost ran me off the road. 
+0 Response:  That is so scary! I am glad you made it out unharmed. I am so glad you didn't get hurt. 
+0 Ref: Did you suffer any injuries? 
+ 
+1 Prompt: Did you suffer any injuries? 
+1 Response:  No, thankfully I didn't. It was a little scary though. I don't know what I would have done if I had gotten hurt. 
+1 Ref: No I wasn't hit. It turned out they were drunk. I felt guilty but realized it was his fault. 
+ 
+2 Prompt: No I wasn't hit. It turned out they were drunk. I felt guilty but realized it was his fault. 
+2 Response:  That's a good way to look at it. It's good that you didn't get hurt. 
+2 Ref: Why did you feel guilty? People really shouldn't drive drunk. 
+ 
+3 Prompt: Why did you feel guilty? People really shouldn't drive drunk. 
+3 Response:  I don't know, I guess I was just in a rush and didn't think about it. 
+3 Ref: I don't know I was new to driving and hadn't experienced anything like that. I felt like my horn made him swerve into the water barrels. 
+ 
+4 Prompt: Well_comma_ can you tell me about your experience? I think we swapped places 
+4 Response:  Well, it was a long time ago, so I don't remember much about it. But, I do remember that it was fun. 
+4 Ref: Yeah i wanted to tell you about the time i was hit by a drunk driver im so happy to still be alive after that experience 
+ 
+5 Prompt: Yeah i wanted to tell you about the time i was hit by a drunk driver im so happy to still be alive after that experience 
+5 Response:  That's good to hear. I'm glad you're still alive. Did you get hurt? 
+5 Ref: Oh my goodness_comma_ that's very scary! I hope you are okay now and the drunk driver was punished for his actions? 
+ 
+6 Prompt: Oh my goodness_comma_ that's very scary! I hope you are okay now and the drunk driver was punished for his actions? 
+6 Response:  I am okay, thank you. It was a long time ago, but it still haunts me. 
+6 Ref: Yeah he was punished hes in jail still 
+ 
+7 Prompt: I there_comma_ dont know what to do_comma_ jst broke up with my girlfirned_comma_ we were 8 years together 
+7 Response:  I am so sorry to hear that.  I hope you are able to move on and find someone better. 
+7 Ref: sorry to hear! do you have any idea about the break up? did you think about it ? 
+ 
+8 Prompt: sorry to hear! do you have any idea about the break up? did you think about it ? 
+8 Response:  I did, but I think it was for the best. We had a lot of problems. 
+8 Ref: Yes we decided together with our minds_comma_ and know i come home and feel so distant from the world 
+ 
+9 Prompt: Yes we decided together with our minds_comma_ and know i come home and feel so distant from the world 
+9 Response:  That's wonderful! I'm happy for you. How long have you two been together?  
+9 Ref: sorry again! hope you'll get relief from this sadness. Please concentrate on your interests to divert your mind from this. 
+ 
+10 Prompt: I couldn't wait to go to the concert. 
+10 Response:  What concert are you going to? I love going to concerts! What kind of music do you like? 
+10 Ref: Which Concert? 
+ 
+11 Prompt: Which Concert? 
+11 Response:  I'm going to see Imagine Dragons. They're one of my favorite bands. 
+11 Ref: The U2 concert. Tickets were really expensive and I never thought we would be able to go_comma_ but somehow we did!!! 
+ 
+12 Prompt: The U2 concert. Tickets were really expensive and I never thought we would be able to go_comma_ but somehow we did!!! 
+12 Response:  I love the U2! I saw them in concert a few years ago and it was amazing! 
+12 Ref: Wow_comma_ that's awesome! I have never been to an actual concert. 
+ 
+13 Prompt: I'm so sad because i've read an article about a newborn girl who died because her parents didn't believe in medication and doctors 
+13 Response:  Oh no, that is so sad. I hope that she is in a better place now. 
+13 Ref: Ugh_comma_ those articles always get me too... :( What was wrong with her?  
+ 
+14 Prompt: Ugh_comma_ those articles always get me too... :( What was wrong with her?  
+14 Response:  She had a brain aneurysm.  It was so sad to see her like that. 
+14 Ref: she was born premature at home_comma_ she had hard time breathing on her own but instead of taking her to the doctor parents were just praying 
+ 
+15 Prompt: she was born premature at home_comma_ she had hard time breathing on her own but instead of taking her to the doctor parents were just praying 
+15 Response:  Oh my gosh, I'm so sorry to hear that. I hope she's doing better now. 
+15 Ref: Jeez! Its so unfortunate... very sad really.  
+ 
+16 Prompt: Jeez! Its so unfortunate... very sad really.  
+16 Response:  I know, I was so upset.  I have been working so hard on this project for so long. 
+16 Ref: yes! And i do believe in God and prayers but goodness gracious please take your children to the hospital and let God heal them THROUGH doctors 
+ 
+17 Prompt: so my friend's baby fell down and scraped his knee yesterday and i was trying so hard to cheer him up 
+17 Response:  Oh no! I'm so sorry to hear that. I hope he recovers quickly. 
+17 Ref: That is nice of you. What did you do? 
+ 
+18 Prompt: That is nice of you. What did you do? 
+18 Response:  I went to the store and bought a lottery ticket. I was so happy I won! 
+18 Ref: i was singing nursery songs :) 
+ 
+19 Prompt: i was singing nursery songs :) 
+19 Response:  That sounds like fun! What kind of songs were you singing? Do you sing often? 
+19 Ref: Which one? 
+ 
+20 Prompt: Which one? 
+20 Response:  The one that is going to cost me a fortune. I don't know if I will be able to afford it. 
+20 Ref: If you happy and you know it :) 
+ 
+21 Prompt: my husband lost a job but i'm hoping he can find a full time job soon 
+21 Response:  I'm sorry to hear that. I hope he finds one soon as well. What kind of work does he do? 
+21 Ref: He will_comma_ I have faith. 
+ 
+22 Prompt: He will_comma_ I have faith. 
+22 Response:  I sure hope so. I have a lot of faith in him, but it's still scary. 
+22 Ref: thank you so much! 
+ 
+23 Prompt: thank you so much! 
+23 Response:  You are welcome.  I hope you are having a great day.  It was nice talking to you. 
+23 Ref: No problem. What kind of work does he do? 
+ 
+24 Prompt: No problem. What kind of work does he do? 
+24 Response:  He's a computer programmer. He's been working on it for a long time now. 
+24 Ref: he is an armed guard 
+ 
+25 Prompt: i just moved to this neighborhood and some dumb criminals shot one of my neighbors and ran into the woods!  
+25 Response:  Oh my goodness! I'm so sorry to hear that. Did you call the police? 
+25 Ref: Thats not good. Do you own a gun? 
+ 
+26 Prompt: Thats not good. Do you own a gun? 
+26 Response:  No, I don't have a gun. I know it's not the right thing to do, but I can't help it. 
+26 Ref: I do! I want to be able to protect my son 
+ 
+27 Prompt: I do! I want to be able to protect my son 
+27 Response:  That's a great goal to have! How old is he, if you don't mind me asking? 
+27 Ref: That is always number one goal. 
+ 
+28 Prompt: i'm so excited because i'm finally going to visit my parents next month! I didn't see them for 3 years 
+28 Response:  That's great! I hope you have a lot of fun! What are you going to do while you're there? 
+28 Ref: 3 years is a long time. How come? 
+ 
+29 Prompt: 3 years is a long time. How come? 
+29 Response:  I have a lot of responsibilities that I have to take care of, so I don't have much free time. 
+29 Ref: I moved to the US and they stayed in my homecountry 
+ 
+30 Prompt: I moved to the US and they stayed in my homecountry 
+30 Response:  That's cool. How long have you been in the US? Where are you from originally? 
+30 Ref: Oh I see. They must miss you_comma_ too. 
+ 
+31 Prompt: I was very angry when a co worker lied about a car accident to get out of working July 4th. I covered his shift till midnight and he was lying about the accident 
+31 Response:  I would be too. Did you confront him about it or did you just let it go? 
+31 Ref: That isn't very nice. 
+ 
+32 Prompt: That isn't very nice. 
+32 Response:  I know, I felt so bad for her. I felt like I had to buy her a gift to make up for it. 
+32 Ref: Yeah he got caught in someones pics on Facebook. Never lie and then go out with people who like to take pictures. 
+ 
+33 Prompt: Yeah he got caught in someones pics on Facebook. Never lie and then go out with people who like to take pictures. 
+33 Response:  That's a good idea. I never thought of it that way. Thanks for the advice. 
+33 Ref: Yes. I do not have a Facebook. 
+ 
+34 Prompt: Yes. I do not have a Facebook. 
+34 Response:  I don't have a facebook either, but I do use instagram and snapchat. 
+34 Ref: Good idea. i don't like social media that much. It can get you in to trouble fast_comma_ even when expressing your opinions. 
+ 
+35 Prompt: So yeah i drove 2 hours to get to wallmart. with 299 in my wallet as advertised_comma_ and the real price of the tv was 399 usd. what a bummer 
+35 Response:  Wow, that's a lot of money for a TV. Did you get a good deal? 
+35 Ref: Thats horrible. 
+ 
+36 Prompt: Thats horrible. 
+36 Response:  I know. I was so mad at him. I can't believe he would do something like that. 
+36 Ref: Yeah i had my hopes reall high and then i left empty handed_comma_ such a terrible feeling! 
+ 
+37 Prompt: Yeah i had my hopes reall high and then i left empty handed_comma_ such a terrible feeling! 
+37 Response:  Oh no! I'm sorry to hear that. Do you think you'll get another chance? 
+37 Ref: Yes I do not like walmart. 
+ 
+38 Prompt: Yes I do not like walmart. 
+38 Response:  I don't either. I hate the way they treat their employees. They treat them like they own the store. 
+38 Ref: Yes_comma_ i guess walmart and the rest of false advertisement in the US_comma_ the look in my daugther eyes when i came home empty handed 
+ 
+39 Prompt: My friend's boyfriend recently made a pass at me. I'm married_comma_ and I also am really good friend's with his girlfriend so I felt really bad. I made sure he knew I was loyal and honest to both! 
+39 Response:  I'm sorry to hear that, but I'm glad you didn't let it get to you. 
+39 Ref: Thats horrible. Did you tell on him? 
+ 
+40 Prompt: Thats horrible. Did you tell on him? 
+40 Response:  No, I didn't want to make him feel bad. I just felt so bad for him. 
+40 Ref: I struggled with it_comma_ but my friend was in a really bad spot_comma_ with no income and raising her grandchild_comma_ he was the financial supporter. So_comma_ I didn't tell her_comma_ as I knew it would really hurt her in several ways_comma_ plus she really loves him! 
+ 
+41 Prompt: I struggled with it_comma_ but my friend was in a really bad spot_comma_ with no income and raising her grandchild_comma_ he was the financial supporter. So_comma_ I didn't tell her_comma_ as I knew it would really hurt her in several ways_comma_ plus she really loves him! 
+41 Response:  That's very nice of you. I'm sure she appreciates it. I hope she's doing better now. 
+41 Ref: Thats a tough situation. 
+ 
+42 Prompt: my baby is sleeping. it's so peaceful and quiet in this house 
+42 Response:  That's great.  How old is your baby?  Do you have any plans for the rest of the day? 
+42 Ref: I guess it makes you appreciate things you used to take for granted_comma_ lol. But it doesn't last forever and is worth it.  
+ 
+43 Prompt: I guess it makes you appreciate things you used to take for granted_comma_ lol. But it doesn't last forever and is worth it.  
+43 Response:  I know. I am so thankful for the time I had with her. I don't know what I would do without her. 
+43 Ref: i totally agree with you! 
+ 
+44 Prompt: i totally agree with you! 
+44 Response:  Thank you for agreeing with me. I don't know what I would do if I was in your shoes. 
+44 Ref: That's a full time job raising a human 
+ 
+45 Prompt: hi_comma_ i feel so lonely sometimes because all my friends live in a different country 
+45 Response:  I'm sorry to hear that. Do you have any hobbies to take your mind off of it? 
+45 Ref: Oh_comma_ I'm sure you are lonely. Maybe you can join some kind of club that lets you meet new friends? 
+ 
+46 Prompt: Oh_comma_ I'm sure you are lonely. Maybe you can join some kind of club that lets you meet new friends? 
+46 Response:  I'm not lonely, I have a lot of friends, but they all live far away. 
+46 Ref: i was thinking about it! I wanted to join a group for local moms 
+ 
+47 Prompt: i was thinking about it! I wanted to join a group for local moms 
+47 Response:  That's a great idea!  What kind of group were you thinking of joining? 
+47 Ref: That's a good idea! This way you can also meet friends for yourself_comma_ but also maybe meet new friend's for your children to hang out with while you do with their moms! 
+ 
+48 Prompt: I have a friend that has a child that is unruly and does bad things. One day at our home_comma_ he grabbed a game and sat on it_comma_ instantly breaking it! It was expensive and this really irked me_comma_ especially because she doesn't discipline him when he does bad things. 
+48 Response:  That's terrible. I hope he learns his lesson and doesn't do anything like that again. 
+48 Ref: oh man. i'm all about discipline! I don't like spoiled bratty kids 
+ 
+49 Prompt: oh man. i'm all about discipline! I don't like spoiled bratty kids 
+49 Response:  I know, right?  I was so mad at her.  I hope she learned her lesson. 
+49 Ref: Me either! I have two of my own children_comma_ and I would have never let them get away with that kind of behavior when they were his age. I just don't understand those kind of parents@! 
+ 
+50 Prompt: Me either! I have two of my own children_comma_ and I would have never let them get away with that kind of behavior when they were his age. I just don't understand those kind of parents@! 
+50 Response:  I know right! I don't want my kids to have to deal with that at all. 
+50 Ref: yes_comma_ i've heard some parents don't ever say no to their kids. makes no sense 
+ 
+51 Prompt: I'm so scared of bugs! i found one in my hair yesterday and almost died 
+51 Response:  Oh no! I hate bugs too. Did you get rid of it before it got in your hair? 
+51 Ref: ok 
+ 
+52 Prompt: ok 
+52 Response:  Do you have any pets? I have a dog and a cat. Do you? 
+52 Ref: Ugh I hate bugs with a passion_comma_ they are so creepy 
+ 
+53 Prompt: I recently spoke with my ex-girlfriend on the phone. The conversation went pretty well_comma_ and it reminded me of my past experiences with her. 
+53 Response:  That's good to hear. How long were you two together before you spoke to each other? 
+53 Ref: Did things end amicably? I hope everything is good now! 
+ 
+54 Prompt: Did things end amicably? I hope everything is good now! 
+54 Response:  They did, thank you! It was a long road, but we got through it.  
+54 Ref: Yes_comma_ they ended somewhat well_comma_ but there were tense moments. I am glad she's doing well_comma_ but I miss her. 
+ 
+55 Prompt: Yes_comma_ they ended somewhat well_comma_ but there were tense moments. I am glad she's doing well_comma_ but I miss her. 
+55 Response:  I'm sorry to hear that. I hope she is in a better place. What happened to her? 
+55 Ref: I understand that_comma_ I hope things work out well for you both in the end! 
+ 
+56 Prompt: I understand that_comma_ I hope things work out well for you both in the end! 
+56 Response:  Thank you!  I hope so too.  It's going to be a long road. 
+56 Ref: Thank you! That means a lot. 
+ 
+57 Prompt: One of the times I remember feeling the most blissed out in life was right after the birth of my first child. 
+57 Response:  Wow, congratulations! How many kids do you have? Do you still have them? 
+57 Ref: That is a very blessed day. It is something you will never forget. 
+ 
+58 Prompt: That is a very blessed day. It is something you will never forget. 
+58 Response:  I know, I am so grateful for it.  I can't believe how lucky I am. 
+58 Ref: Obviously there are the demands of a new child -- but that feeling of finally meeting someone you waited so long for_comma_ and the love surrounding the whole situation. Truly something to remember. 
+ 
+59 Prompt: Obviously there are the demands of a new child -- but that feeling of finally meeting someone you waited so long for_comma_ and the love surrounding the whole situation. Truly something to remember. 
+59 Response:  Yes, I know exactly what you mean. It's a wonderful feeling. I hope you have a wonderful day! 
+59 Ref: Yes_comma_ I couldn't agree more. It is remarkable how your feeling suddenly change. 
+ 
+60 Prompt: Have you ever been in a situation when payment of some kind has come through *just* in the nick of time?! Talk about gratitude! 
+60 Response:  Yes, I have been in that situation a few times.  It is a blessing. 
+60 Ref: I bet that must have been nerve wracking until it happened. 
+ 
+61 Prompt: I bet that must have been nerve wracking until it happened. 
+61 Response:  It was. I was so scared I was going to have to call an ambulance. 
+61 Ref: Absolutely. You go from scared and desperate to grateful and optimistic in one quick moment! It's not a situation I wish to be in again. 
+ 
+62 Prompt: Absolutely. You go from scared and desperate to grateful and optimistic in one quick moment! It's not a situation I wish to be in again. 
+62 Response:  I agree. I don't want to go through that again either. I'm glad I was able to overcome my fears. 
+62 Ref: Oh I'm sure. I would not like to be in a situation like that. Good thing everything worked out for you. 
+ 
+63 Prompt: Im so grateful for my family due to an incident with my friend 
+63 Response:  That's good to hear. What kind of incident was it, if you don't mind me asking? 
+63 Ref: Oh really? What happened with your family and friend then? 
+ 
+64 Prompt: Oh really? What happened with your family and friend then? 
+64 Response:  They were fine, but I was so scared at the time. I thought I was going to die. 
+64 Ref: My friend lost her parents and siblings in a fire and their family was very close to mine. So seeing her go through the grief made me realize how thankful I should be  
+ 
+65 Prompt: My friend lost her parents and siblings in a fire and their family was very close to mine. So seeing her go through the grief made me realize how thankful I should be  
+65 Response:  I'm so sorry to hear that. I'm glad you were able to be there for her. 
+65 Ref: Oh wow_comma_ that's awful. Stuff like that really teaches you to appreciate what you've got and to not take it for granted. 
+ 
+66 Prompt: Oh wow_comma_ that's awful. Stuff like that really teaches you to appreciate what you've got and to not take it for granted. 
+66 Response:  Yeah, it really does.  I don't know what I would have done without her. 
+66 Ref: Yes definitely. Never take anything for granted as you never know when it will be taken away from you 
+ 
+67 Prompt: I'm a big believer in listening to your gut. Sometimes I might wonder where my intuition is leading me_comma_ but it always seems to be spot on. 
+67 Response:  I know exactly what you mean.  Sometimes I wonder if there is something wrong with me. 
+67 Ref: I agree_comma_ someimes we just know 
+ 
+68 Prompt: I agree_comma_ someimes we just know 
+68 Response:  I know what you mean.  It's hard to know what to do sometimes. 
+68 Ref: It is a "knowing" -- and a flowing! When something is right_comma_ it just feels easier to go with it -- like you're being led_comma_ even if you might not fully know to where. 
+ 
+69 Prompt: It is a "knowing" -- and a flowing! When something is right_comma_ it just feels easier to go with it -- like you're being led_comma_ even if you might not fully know to where. 
+69 Response:  I know exactly what you mean. It's like you know what you're getting yourself into. 
+69 Ref: exactly_comma_ i get that entirely! 
+ 
+70 Prompt: I couldnt celebrate my 18th birthday as I had exams during the time and I felt terrible for it. But my friends threw a surprise party for me and it was the best!  
+70 Response:  That's so nice of them! What did you end up doing for your 18th Birthday? 
+70 Ref: That's great! How did they surprise you? 
+ 
+71 Prompt: That's great! How did they surprise you? 
+71 Response:  They just showed up at my house unexpectedly.  I was so happy. 
+71 Ref: I was studying in my bedroom for a couple of hours straight with headphones on and then my mom called me to the living room for dinner and when I went out the whole place was decorated and everyone was there 
+ 
+72 Prompt: I was studying in my bedroom for a couple of hours straight with headphones on and then my mom called me to the living room for dinner and when I went out the whole place was decorated and everyone was there 
+72 Response:  That is so nice of your mom! What did you end up having to eat? Was it good? 
+72 Ref: That is so sweet of them_comma_ I hope you enjoyed it! 
+ 
+73 Prompt: I feel lonely sometimes cause I live in a house with 5 girls and all of them have boyfriends and sometimes they are all hanging out with their significant others and I feel lonely 
+73 Response:  I'm sorry to hear that. Have you thought about talking to them about how you feel? 
+73 Ref: Awww_comma_ That sucks man. Hopefully they don't say mean things to you about being lonely. 
+ 
+74 Prompt: Awww_comma_ That sucks man. Hopefully they don't say mean things to you about being lonely. 
+74 Response:  I don't think they mean anything. I just don't know what to do about it. 
+74 Ref: Sometimes they joke about it and obviously I make it look like its totally fine cause I dont want to give them the impression that I am lonely but it does hurt sometimes 
+ 
+75 Prompt: Sometimes they joke about it and obviously I make it look like its totally fine cause I dont want to give them the impression that I am lonely but it does hurt sometimes 
+75 Response:  I know what you mean. I don't want to make them feel bad about it either. 
+75 Ref: Well i used to be lonely a lot but i eventually found someone. I think you will too. 
+ 
+76 Prompt: As silly as it sounds_comma_ I was so surprised at how different my two kids were as babies. You're reminded that they're wired with their own personalities from the git-go. 
+76 Response:  That's so true! I can't wait for my daughter to be a teenager so I can go back to being a baby again! 
+76 Ref: Yeah that is always odd to me_comma_ before they can talk they are already unique! 
+ 
+77 Prompt: Yeah that is always odd to me_comma_ before they can talk they are already unique! 
+77 Response:  I know, right? I don't get it. It's like they don't even know what they're talking about. 
+77 Ref: One was pacifier_comma_ one was fingers. One wanted to co-sleep_comma_ one liked her space. One liked facing *out* in the Baby Bjorn carrier_comma_ one liked cocooning in a sling! 
+ 
+78 Prompt: One was pacifier_comma_ one was fingers. One wanted to co-sleep_comma_ one liked her space. One liked facing *out* in the Baby Bjorn carrier_comma_ one liked cocooning in a sling! 
+78 Response:  That is so cute! I wish I had a pacific coconut sling. 
+78 Ref: That is how it goes_comma_ sometimes you can just figure them out immediately 
+ 
+79 Prompt: The other day I had a deep craving for Chik-Fil-A. 
+79 Response:  I love Chick-fil-a.  What did you get?  I love their chicken nuggets and french fries. 
+79 Ref: I understand that one_comma_they are my favorite place to eat 
+ 
+80 Prompt: I understand that one_comma_they are my favorite place to eat 
+80 Response:  I love them too! I love their spicy chicken sandwiches and french fries! 
+80 Ref: Mine too. So I drive there and pull in the parking lot and it's completely empty. I then realized it was Sunday. 
+ 
+81 Prompt: Mine too. So I drive there and pull in the parking lot and it's completely empty. I then realized it was Sunday. 
+81 Response:  Oh no! That's the worst! I hope you were able to find something to do. 
+81 Ref: That has happened to me too many times to count 
+ 
