@@ -116,7 +116,7 @@ config = PPOConfig(
     gradient_accumulation_steps=script_args.gradient_accumulation_steps,
 )
 
-def append_scores(original, sample):
+def append_scores(labels, original, sample):
     all_emo_scores = original
     for sam in sample:
         for s in sam:
@@ -249,7 +249,7 @@ empathy_model = AutoModelForSequenceClassification.from_pretrained(reward_model_
     ppo_trainer.accelerator.device
 )
 #reward_classifier = pipeline('text-classification', model = reward_model_id)
-reward_classifier = pipeline('text-classification', model=reward_model_id,tokenizer=reward_model_id, max_length=512, truncation=True, top_k=None)
+reward_classifier = pipeline('text-classification', model=reward_model_id, tokenizer=reward_model_id, max_length=512, truncation=True, top_k=None)
 
 # We then define the arguments to pass to the `generate` function. These arguments
 # are passed to the `generate` function of the PPOTrainer, which is a wrapper around
