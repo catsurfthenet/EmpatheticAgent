@@ -42,6 +42,7 @@ from nltk.tokenize import word_tokenize
 #from classifiers import get_sentence_score
 from scipy.spatial import distance
 from scipy.special import softmax
+from helper import weighted_bleu_score, get_js_distance, emo_dis_bleu, append_scores
 
 tqdm.pandas()
 
@@ -116,6 +117,7 @@ config = PPOConfig(
     gradient_accumulation_steps=script_args.gradient_accumulation_steps,
 )
 
+"""
 def append_scores(labels, original, sample):
     all_emo_scores = original
     for sam in sample:
@@ -128,14 +130,16 @@ def append_scores(labels, original, sample):
     probi = softmax(all_scores)
     all_emo_scores = dict(zip(labels, probi))
     return all_emo_scores
+"""
 
+"""
 def weighted_bleu_score(target, response):
     score1 = nltk.translate.bleu_score.sentence_bleu([target], response, weights=(1, 0, 0))
     score2 = nltk.translate.bleu_score.sentence_bleu([target], response, weights=(0, 1, 0))
     score3 = nltk.translate.bleu_score.sentence_bleu([target], response, weights=(0, 0, 1))
     ngram_score_list = [score1, score2, score3]
     return (sum(ngram_score_list) / len(ngram_score_list))
-
+"""
 
 # Below is an example function to build the dataset. In our case, we use the IMDB dataset
 # from the `datasets` library. One should customize this function to train the model on
@@ -272,6 +276,7 @@ fluency_weight = 0.7
 def reward_function():
     pass
 
+"""
 def get_js_distance(prompt_results, emo_results):
     labels = [s.get('label') for s in emo_results[0]]
     zeros = [0] * len(labels)
@@ -317,12 +322,12 @@ def emo_dis_bleu(batch, prompt_results, emo_results, weights=[0.2, 0.8]):
         # better response higher score
         temp_score = (emp_score * emp_weight) + (BLEUscore * fluency_weight)
         score_list.append(np.float32(temp_score))
-    return logit(score_list)
-
+    return score_list
+"""
 
 with open(f'{path_prefix}_emo_probi_score_train_output.txt', 'w') as f:
     counter = 0
-    best_score = 5
+    best_score = 0
     for epoch, batch in tqdm(enumerate(ppo_trainer.dataloader)):
         query_tensors = batch["input_ids"]
         # Get response from the policy model
@@ -358,52 +363,7 @@ with open(f'{path_prefix}_emo_probi_score_train_output.txt', 'w') as f:
         prompt_results = reward_classifier(prompts)
         emo_results = reward_classifier(texts)
 
-        """
-        labels = [s.get('label') for s in emo_results[0]]
-        zeros = [0] * len(labels)
-        score_dict = dict(zip(labels, zeros))
-
-        empathy_results = append_scores(score_dict, emo_results)
-        score_dict = dict(zip(labels, zeros))
-        prompt_emo_results = append_scores(score_dict, prompt_results)
-        
-        # sort alphabetically
-        empathy_results = dict(sorted(empathy_results.items(), key=lambda x: x[0].lower()))
-        prompt_emo_results = dict(sorted(prompt_emo_results.items(), key=lambda x: x[0].lower()))
-        # all_emo_probi_values = list(all_emo_probi.values())
-        empathy_results_values = list(empathy_results.values())
-        prompt_emo_results_values = list(prompt_emo_results.values())
-
-        js_distance = distance.jensenshannon(prompt_emo_results_values, empathy_results_values)
-        """
-
-        # js_distance: identical = 0, entirely different = 1
-        #emo_score = 1 - js_distance
-        """
-        emo_score = get_js_distance(prompt_results, emo_results)
-
-        for i in range(len(batch["response"])):
-            temp_score = 0
-            response = word_tokenize(batch["response"][i])
-            target = batch["query"][i].get("target").replace("_comma_", ",")
-            target = word_tokenize(target)
-            # Compute BLEU score
-            BLEUscore = weighted_bleu_score(target, response)
-
-            
-            #if empathy_results[i]['label'] == "Empathy":
-            #    emp_score = empathy_results[i]['score']
-            #    temp_score += (emp_score * emp_weight) # reward if classified as Empathy
-            #else:
-            #    dis_score = empathy_results[i]['score'] # TODO Distress can be good feedback
-            #    temp_score += (dis_score * emp_weight)  
-            
-            #emp_score = empathy_results[i]['score']
-            emp_score = emo_score
-            temp_score = (emp_score * emp_weight) + ((1 - BLEUscore) * fluency_weight)
-            score_list.append(np.float32(temp_score))
-        """
-        score_list = emo_dis_bleu(batch, prompt_results, emo_results, weights=[emp_weight, fluency_weight])
+        score_list, _, _ = logit(emo_dis_bleu(batch["query"], batch["response"], prompt_results, emo_results, weights=[emp_weight, fluency_weight]))
         rewards = [torch.tensor(output) for output in score_list] # change reward
 
         # Run PPO step

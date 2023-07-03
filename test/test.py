@@ -9,7 +9,7 @@ from datasets import load_dataset, Dataset
 from tqdm import tqdm
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, AutoModelForCausalLM, AutoModelForSequenceClassification, \
     pipeline
-from classifiers import get_sentence_score
+#from classifiers import get_sentence_score
 import nltk
 from nltk.tokenize import word_tokenize
 
@@ -18,7 +18,7 @@ device = torch.cuda.current_device() if torch.cuda.is_available() else "cpu"
 context_length = 200
 
 pretrained_model = "facebook/blenderbot-400M-distill"
-ppo_model = "./DEV-blenderbot-400m-emo-probi-bleu-last-bleu0.06406307965517044" #"./gpt-neo-125M-emo-test5epoch"
+ppo_model = "../models/DEV-blenderbot-400m-emo-probi-bleu-last-bleu0.06406307965517044" #"./gpt-neo-125M-emo-test5epoch"
 #detox_model = "./gpt-neo-125M-detoxified-long-context-26-shl-1e4-final"
 model_id = ppo_model
 model = AutoModelForSeq2SeqLM.from_pretrained(model_id, device_map={"": device}, torch_dtype=torch.float32)
