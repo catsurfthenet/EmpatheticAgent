@@ -64,7 +64,11 @@ tqdm.pandas()
 ########################################################################
 
 # define path
-path_prefix = "DEV-mimic-high-reward"
+save_path_prefix = "DEV-mimic-lr-6-w0.05-0.95"
+load_path_prefix = "../"
+# define weights
+emp_weight = 0.05
+fluency_weight = 0.95
 
 # We first define the configuration of the experiment, defining the model, the dataset,
 # the training parameters, and the PPO parameters.
@@ -88,7 +92,7 @@ class ScriptArguments:
         default=1, metadata={"help": "the number of gradient accumulation steps"}
     )
     model_save_path: Optional[str] = field(
-        default=f"./{path_prefix}-blenderbot-400m-emo-probi-bleu", # blenderbot-400M-distill-empathy-score-only
+        default=f"./{save_path_prefix}-blenderbot-400m-emo-probi-bleu", # blenderbot-400M-distill-empathy-score-only
         metadata={"help": "the path to save the model"},
     )
 
@@ -111,7 +115,7 @@ config = PPOConfig(
     model_name=script_args.model_name,
     learning_rate=script_args.learning_rate,
     log_with=script_args.log_with,
-    ppo_epochs=5,
+    ppo_epochs=1,
     mini_batch_size=script_args.mini_batch_size,
     batch_size=script_args.batch_size,
     gradient_accumulation_steps=script_args.gradient_accumulation_steps,
@@ -247,14 +251,13 @@ output_max_length = 50
 output_length_sampler = LengthSampler(output_min_length, output_max_length)
 
 model_save_path = script_args.model_save_path
-emp_weight = 0.3
-fluency_weight = 0.7
+
 
 def reward_function():
     pass
 
 
-with open(f'{path_prefix}_emo_probi_score_train_output.txt', 'w') as f:
+with open(f'{save_path_prefix}_emo_probi_score_train_output.txt', 'w') as f:
     counter = 0
     best_score = 0
     for epoch, batch in tqdm(enumerate(ppo_trainer.dataloader)):
@@ -331,11 +334,12 @@ with open(f'{path_prefix}_emo_probi_score_train_output.txt', 'w') as f:
                 prompt_results = reward_classifier(prompts)
                 emo_results = reward_classifier(texts)
                 list_emo_score, mean_emo_score = get_js_distance(prompt_results, emo_results)
-                BLEU_score_list = [(1-b) * fluency_weight for b in BLEU_score_list]
+                BLEU_score_list = [(b) * fluency_weight for b in BLEU_score_list]
                 list_emo_score = [e * emp_weight for e in list_emo_score]
                 list_current_score = [sum(x) for x in zip(BLEU_score_list, list_emo_score)]
+                # current_score = mean((emo_score * emp_weight) + (bleu * fluency_weight))
                 current_score = sum(list_current_score) / len(list_current_score)
-                #current_score = (emo_score * emp_weight) + ((1-mean_bleu) * fluency_weight)
+
                 if current_score > best_score:
                     best_score = current_score
                     print(f"\nSaving model at epoch {epoch}. \n")
@@ -343,10 +347,10 @@ with open(f'{path_prefix}_emo_probi_score_train_output.txt', 'w') as f:
                         ppo_trainer.save_pretrained(f"{model_save_path}-epoch{epoch}-score{np.float32(current_score)}-bleu{np.float32(mean_bleu)}")
                     f.write(f"\nSaving model at epoch {epoch}. \n")
                     f.write(f"Mean BLEU of this epoch: {mean_bleu}. \n")
-                    f.write(f"Mean JS distance of this epoch: {mean_emo_score} \n")
+                    f.write(f"Mean JS distance of this epoch: {1 - mean_emo_score} \n")
                     f.write(f"Score of this epoch: {current_score}. \n")
             except Exception as err:
-                with open(f'{path_prefix}_error_log_empathy_score_epoch{epoch}.txt', 'w') as err_log:
+                with open(f'{save_path_prefix}_error_log_empathy_score_epoch{epoch}.txt', 'w') as err_log:
                     err_log.write(f"Unexpected {err=}, {type(err)=}")
                 err_log.close()
 
@@ -383,7 +387,7 @@ with open(f'{path_prefix}_emo_probi_score_train_output.txt', 'w') as f:
         if ppo_trainer.accelerator.is_main_process:
             ppo_trainer.save_pretrained(f"{model_save_path}-last-score{mean_score}-bleu{np.float32(mean_bleu)}")
     except Exception as err:
-        with open(f'{path_prefix}_error_log_emo_probi_score_last.txt', 'w') as err_log:
+        with open(f'{save_path_prefix}_error_log_emo_probi_score_last.txt', 'w') as err_log:
             err_log.write(f"Unexpected {err=}, {type(err)=}")
         err_log.close()
 
