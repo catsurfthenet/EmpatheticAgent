@@ -96,13 +96,6 @@ class ScriptArguments:
         metadata={"help": "the path to save the model"},
     )
 
-if(os.path.exists('modeldata/emo_probi.p')):
-    print("LOADING data emotion probability distribution...")
-    with open('modeldata/emo_probi.p', "rb") as f:
-        [all_emo_probi, _] = pickle.load(f)
-    f.close()
-all_emo_probi = dict(all_emo_probi)
-
 def padding(data):
     padded = rnn_utils.pad_sequence(data)
     padded = list(map(torch.Tensor, padded.T))
@@ -144,7 +137,6 @@ def build_dataset(
     tokenizer.pad_token = tokenizer.eos_token
 
     #ds = load_dataset(dataset_name, split="train")
-
     if (os.path.exists(dataset_path)):
         print("LOADING empathetic_dialogue")
         with open(dataset_path, "rb") as f:
@@ -166,7 +158,6 @@ def build_dataset(
     ds.set_format(type="torch")
 
     ds = ds.train_test_split(test_size=0.2, shuffle=False)["train"]
-
     return ds
 
 
@@ -185,21 +176,16 @@ set_seed(config.seed)
 
 # Now let's build the model, the reference model, and the tokenizer. We first load the model
 # in bfloat16 to save memory using `transformers`.
-#model = AutoModelForCausalLM.from_pretrained(config.model_name, torch_dtype=torch.float32)
 model = AutoModelForSeq2SeqLM.from_pretrained(config.model_name, torch_dtype=torch.float32)
 
-# And then we pass the loaded model to `AutoModelForCausalLMWithValueHead`.
-#model = AutoModelForCausalLMWithValueHead.from_pretrained(model)
+# Pass the loaded model to `AutoModelForSeq2SeqLMWithValueHead`.
 model = AutoModelForSeq2SeqLMWithValueHead.from_pretrained(model)
 
-# We create a reference model by sharing 20 layers
-#ref_model = create_reference_model(model, num_shared_layers=20)
 ref_model = create_reference_model(model)
 
 # We make sure to use `Adam` optimizer on the model parameters that require gradients.
 optimizer = Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=config.learning_rate)
 
-# GPT-2 / GPT-J tokenizer has a pad token, but it is not eos_token by default. We need to set it to eos_token.
 # only for this model.
 tokenizer = AutoTokenizer.from_pretrained(config.model_name)
 tokenizer.pad_token = tokenizer.eos_token
@@ -214,16 +200,8 @@ ppo_trainer = PPOTrainer(
     data_collator=collator,
     optimizer=optimizer,
 )
-"""
+
 # We then build the reward pipeline, we will use the emotion classification model to compute the reward.
-# We first load the toxicity model and tokenizer.
-emo_class_model_id = "j-hartmann/emotion-english-distilroberta-base" #TODO change this
-emo_tokenizer = RobertaTokenizer.from_pretrained(emo_class_model_id)
-# We load the toxicity model in fp16 to save memory.
-emo_model = RobertaForSequenceClassification.from_pretrained(emo_class_model_id, torch_dtype=torch.float32).to(
-    ppo_trainer.accelerator.device
-)
-"""
 model = model.to(ppo_trainer.accelerator.device)
 #dev_dataset = dev_dataset.to(ppo_trainer.accelerator.device)
 
@@ -233,7 +211,6 @@ empathy_tokenizer = AutoTokenizer.from_pretrained(reward_model_id)
 empathy_model = AutoModelForSequenceClassification.from_pretrained(reward_model_id, torch_dtype=torch.float32).to(
     ppo_trainer.accelerator.device
 )
-#reward_classifier = pipeline('text-classification', model = reward_model_id)
 reward_classifier = pipeline('text-classification', model=reward_model_id, tokenizer=reward_model_id, max_length=512, truncation=True, top_k=None)
 
 # We then define the arguments to pass to the `generate` function. These arguments
@@ -251,10 +228,6 @@ output_max_length = 50
 output_length_sampler = LengthSampler(output_min_length, output_max_length)
 
 model_save_path = script_args.model_save_path
-
-
-def reward_function():
-    pass
 
 
 with open(f'{save_path_prefix}_emo_probi_score_train_output.txt', 'w') as f:
@@ -353,7 +326,6 @@ with open(f'{save_path_prefix}_emo_probi_score_train_output.txt', 'w') as f:
                 with open(f'{save_path_prefix}_error_log_empathy_score_epoch{epoch}.txt', 'w') as err_log:
                     err_log.write(f"Unexpected {err=}, {type(err)=}")
                 err_log.close()
-
 
     # validate at very last ?
     try:
