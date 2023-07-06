@@ -85,7 +85,7 @@ class ScriptArguments:
     # models like gpt-neo* models are more suitable.
     model_name: Optional[str] = field(default="facebook/blenderbot-400M-distill", metadata={"help": "the model name"})
     log_with: Optional[str] = field(default=None, metadata={"help": "use 'wandb' to log with wandb"})
-    learning_rate: Optional[float] = field(default=(1.47e-7) * 2, metadata={"help": "the learning rate"})
+    learning_rate: Optional[float] = field(default=(1.47e-6) * 2, metadata={"help": "the learning rate"})
     mini_batch_size: Optional[int] = field(default=4, metadata={"help": "the PPO minibatch size"})
     batch_size: Optional[int] = field(default=16, metadata={"help": "the batch size"})
     gradient_accumulation_steps: Optional[int] = field(
@@ -320,7 +320,7 @@ with open(f'{save_path_prefix}_emo_probi_score_train_output.txt', 'w') as f:
                         ppo_trainer.save_pretrained(f"{model_save_path}-epoch{epoch}-score{np.float32(current_score)}-bleu{np.float32(mean_bleu)}")
                     f.write(f"\nSaving model at epoch {epoch}. \n")
                     f.write(f"Mean BLEU of this epoch: {mean_bleu}. \n")
-                    f.write(f"Mean JS distance of this epoch: {1 - mean_emo_score} \n")
+                    f.write(f"Mean JS distance of this epoch: {mean_emo_score} \n")
                     f.write(f"Score of this epoch: {current_score}. \n")
             except Exception as err:
                 with open(f'{save_path_prefix}_error_log_empathy_score_epoch{epoch}.txt', 'w') as err_log:
@@ -352,7 +352,7 @@ with open(f'{save_path_prefix}_emo_probi_score_train_output.txt', 'w') as f:
         prompt_results = reward_classifier(prompts)
         emo_results = reward_classifier(texts)
         list_emo_score, mean_emo_score = get_js_distance(prompt_results, emo_results)
-        BLEU_score_list = [(1-b) * fluency_weight for b in BLEU_score_list]
+        BLEU_score_list = [(b) * fluency_weight for b in BLEU_score_list]
         list_emo_score = [e * emp_weight for e in list_emo_score]
         current_score = [sum(x) for x in zip(BLEU_score_list, list_emo_score)]
         mean_score = sum(current_score) / len(current_score)
