@@ -1,7 +1,7 @@
 import os
 import pickle
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline, AutoModelForSeq2SeqLM, \
-    RobertaTokenizerFast, RobertaForSequenceClassification
+    RobertaTokenizerFast, RobertaForSequenceClassification, AutoModelForCausalLM
 import matplotlib.pyplot as plt
 import numpy as np
 from datasets import Dataset
@@ -12,12 +12,14 @@ from scipy.spatial import distance
 from scipy.special import softmax, logit
 from helper import weighted_bleu_score, get_js_distance, emo_dis_bleu, append_scores
 
+text_generation_model = "blenderbot" # blenderbot, ppo_model
+ppo_model = "../DEV-mimic-high-reward-blenderbot-400m-emo-probi-bleu-last-score0.7700437359931219-bleu0.06567799299955368"
+
+output_path_prefix = 'DEV_opt_w05-95_test'
+load_path_prefix = '../'
 
 device = torch.cuda.current_device() if torch.cuda.is_available() else "cpu"
 #device = "mps"
-
-output_path_prefix = 'DEV_pretrained_w05-95_test'
-load_path_prefix = ''
 
 # evaluation models
 emo_model_id = "SamLowe/roberta-base-go_emotions"
@@ -29,8 +31,8 @@ emp_classifier_model = f"{load_path_prefix}models/roberta-empathy-03-06-2023-18_
 empathy_model_id = emp_classifier_model
 empathy_tokenizer = RobertaTokenizerFast.from_pretrained('roberta-base')
 empathy_model = RobertaForSequenceClassification.from_pretrained(empathy_model_id, torch_dtype=torch.float32).to(device)
-#empathy_classifier = pipeline('text-classification', model=empathy_model, tokenizer=empathy_tokenizer, max_length=512, truncation=True)
-empathy_classifier = pipeline('text-classification', model=empathy_model, tokenizer=empathy_tokenizer, max_length=512, truncation=True, device=0)
+empathy_classifier = pipeline('text-classification', model=empathy_model, tokenizer=empathy_tokenizer, max_length=512, truncation=True)
+#empathy_classifier = pipeline('text-classification', model=empathy_model, tokenizer=empathy_tokenizer, max_length=512, truncation=True, device=0)
 
 
 if(os.path.exists(f'{load_path_prefix}modeldata/emo_probi.p')):
@@ -40,36 +42,23 @@ if(os.path.exists(f'{load_path_prefix}modeldata/emo_probi.p')):
     f.close()
 all_emo_probi = dict(all_emo_probi)
 
-"""
-def append_scores(labels, original, sample):
-    all_emo_scores = original
-    for sam in sample:
-        for s in sam:
-            emo = s.get('label')
-            prev_score = original[emo]
-            score = s.get('score')
-            all_emo_scores[emo] = (prev_score + score)
-    all_scores = list(zip(*all_emo_scores.items()))[1]
-    probi = softmax(all_scores)
-    all_emo_scores = dict(zip(labels, probi))
-    return all_emo_scores
-
-
-def weighted_bleu_score(target, response):
-    score1 = nltk.translate.bleu_score.sentence_bleu([target], response, weights=(1, 0, 0))
-    score2 = nltk.translate.bleu_score.sentence_bleu([target], response, weights=(0, 1, 0))
-    score3 = nltk.translate.bleu_score.sentence_bleu([target], response, weights=(0, 0, 1))
-    ngram_score_list = [score1, score2, score3]
-    return (sum(ngram_score_list) / len(ngram_score_list))
-"""
 
 # test model
 BLEU_score_list = []
 texts = []
-pretrained_model = "facebook/blenderbot-400M-distill"
-ppo_model = "../DEV-mimic-high-reward-blenderbot-400m-emo-probi-bleu-last-score0.7700437359931219-bleu0.06567799299955368"
-model_id = pretrained_model
-model = AutoModelForSeq2SeqLM.from_pretrained(model_id, device_map={"": device}, torch_dtype=torch.float32).to(device)
+
+
+if text_generation_model == "opt-iml-1.3b":
+    pretrained_model = "facebook/opt-iml-1.3b"
+    model_id = pretrained_model
+    model = AutoModelForCausalLM.from_pretrained(model_id, device_map={"": device}, torch_dtype=torch.float32).to(device)
+elif text_generation_model == "ppo_model":
+    model_id = ppo_model
+    model = AutoModelForSeq2SeqLM.from_pretrained(model_id, device_map={"": device}, torch_dtype=torch.float32).to(device)
+else:
+    pretrained_model = "facebook/blenderbot-400M-distill"
+    model_id = pretrained_model
+    model = AutoModelForSeq2SeqLM.from_pretrained(model_id, device_map={"": device}, torch_dtype=torch.float32).to(device)
 tokenizer = AutoTokenizer.from_pretrained(model_id)
 tokenizer.pad_token = tokenizer.eos_token
 tokenizer.padding_side = "left"
@@ -77,8 +66,8 @@ tokenizer.padding_side = "left"
 with open(f"{load_path_prefix}modeldata/test_dialogue_dataset.p", "rb") as f:
     [test_dataset] = pickle.load(f)
 #test_dataset = Dataset.from_dict(test_dataset)[:10]
-#test_dataset = Dataset.from_dict(test_dataset).shuffle(seed=2023).select(range(5))
-test_dataset = Dataset.from_dict(test_dataset)
+test_dataset = Dataset.from_dict(test_dataset).shuffle(seed=2023).select(range(5))
+#test_dataset = Dataset.from_dict(test_dataset)
 
 def tokenize(sample):
     prompt = sample["prompt"] # prompt
@@ -152,22 +141,6 @@ try:
         current_score = sum(score_list) / len(score_list)
         text_log.write(f"{counter} Current weighted Score: {current_score}\n")
 
-        """
-        labels = [s.get('label') for s in emo_results[0]]
-        zeros = [0] * len(labels)
-        score_dict = dict(zip(labels, zeros))
-        emo_results = append_scores(labels, score_dict, emo_results)
-        # sort alphabetically
-        emo_results = dict(sorted(emo_results.items(), key=lambda x: x[0].lower()))
-        all_emo_probi_values = list(all_emo_probi.values())
-        emo_results_values = list(emo_results.values())
-    
-        js_distance = distance.jensenshannon(all_emo_probi_values, emo_results_values)
-        # js_distance: identical = 0, entirely different = 1, reverse this for reward
-        emo_score = js_distance
-    
-        current_score = (emo_score * emp_weight) + ((1 - mean_bleu) * fluency_weight)
-        """
         # get empathy label and score from empathy classifier
         text_log.write(f"{counter} Get empathy labels. \n")
         #texts = texts.to(device)
@@ -197,23 +170,7 @@ try:
                 elif lab == 'LABEL_2':
                     label2 = label_number[lab] / len(emp_results_labels)
         emp_ratio = [label0, label1, label2]
-        """
-        text_log.write(f"{counter} Start empathy score calculation... \n")
-        emp_score = 0
-        if len(label_check) < 3:
-            for lab in label_check:
-                # nothing to be added for LABEL_0
-                if lab == 'LABEL_0':
-                    emp_score += emp_score_label_weight[0] * label_number[lab]
-                elif lab == 'LABEL_1':
-                    emp_score += emp_score_label_weight[1] * label_number[lab]
-                elif lab == 'LABEL_2':
-                    emp_score += emp_score_label_weight[2] * label_number[lab]
-        else:
-            emp_score = label_number['LABEL_0'] * emp_score_label_weight[0] + label_number['LABEL_1'] * emp_score_label_weight[1] + label_number['LABEL_2'] * emp_score_label_weight[2]
-        # normalise
-        emp_score = emp_score / len(emp_results_labels)
-        """
+
         text_log.write(f"{counter} Empathy Ratio: no empathy {emp_ratio[0]}, weak empathy {emp_ratio[1]}, strong empathy {emp_ratio[2]}\n")
 
         text_log.write(f"Mean BLEU: {mean_bleu}, emp ratio: {emp_ratio}, score: {current_score}. \n")

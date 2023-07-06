@@ -56,8 +56,9 @@ def emo_dis_bleu(batch_query, batch_response, prompt_results, emo_results, weigh
     fluency_weight = weights[1]
     score_list = []
     BLEUscore_list = []
-    
-    list_emo_score, mean_emo_score = get_js_distance(prompt_results, emo_results)
+    list_emo_score = [0] * len(batch_response)
+    if emo_weight > 0:
+        list_emo_score, mean_emo_score = get_js_distance(prompt_results, emo_results)
 
     for i in range(len(batch_response)):
         temp_score = 0
@@ -66,6 +67,10 @@ def emo_dis_bleu(batch_query, batch_response, prompt_results, emo_results, weigh
         target = word_tokenize(target)
         # Compute BLEU score
         BLEUscore = weighted_bleu_score(target, response)
+        if BLEUscore == 0:
+            BLEUscore += 1e-10 # so that logit != inf
+        elif BLEUscore == 1:
+            BLEUscore -= 1e-10
         BLEUscore_list.append(BLEUscore)
 
         emp_score = list_emo_score[i]

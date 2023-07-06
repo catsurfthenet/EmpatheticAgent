@@ -64,11 +64,11 @@ tqdm.pandas()
 ########################################################################
 
 # define path
-save_path_prefix = "DEV-mimic-lr-6-w0.05-0.95"
+save_path_prefix = "DEV-mimic-lr-6-w0.05-0.95" #"pure-bleu"
 load_path_prefix = "../"
 # define weights
-emp_weight = 0.05
-fluency_weight = 0.95
+emp_weight = 0.05 #0
+fluency_weight = 0.95 #1
 
 # We first define the configuration of the experiment, defining the model, the dataset,
 # the training parameters, and the PPO parameters.
@@ -158,6 +158,7 @@ def build_dataset(
     ds.set_format(type="torch")
 
     ds = ds.train_test_split(test_size=0.2, shuffle=False)["train"]
+    #ds = ds.shuffle(seed=2023).select(range(5000))
     return ds
 
 
