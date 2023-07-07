@@ -12,10 +12,10 @@ from scipy.spatial import distance
 from scipy.special import softmax, logit
 from helper import weighted_bleu_score, get_js_distance, emo_dis_bleu, append_scores
 
-text_generation_model = "blenderbot" # blenderbot, ppo_model
+text_generation_model = "ppo_model" # blenderbot, ppo_model
 ppo_model = "../DEV-mimic-high-reward-blenderbot-400m-emo-probi-bleu-last-score0.7700437359931219-bleu0.06567799299955368"
 
-output_path_prefix = 'DEV_opt_w05-95_test'
+output_path_prefix = 'DEV_ppo_test'
 load_path_prefix = '../'
 
 device = torch.cuda.current_device() if torch.cuda.is_available() else "cpu"
@@ -79,8 +79,8 @@ def tokenize(sample):
 
 test_dataset = test_dataset.map(tokenize, batched=False)
 test_dataset.set_format(type="torch")
-emp_weight = 0.05
-fluency_weight = 0.95
+emp_weight = 0.2
+fluency_weight = 0.8
 #emp_score_label_weight = [-1, 1, 4]
 mean_bleu = 0
 emp_ratio = []

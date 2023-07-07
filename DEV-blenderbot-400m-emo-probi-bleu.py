@@ -42,7 +42,7 @@ from nltk.tokenize import word_tokenize
 #from classifiers import get_sentence_score
 from scipy.spatial import distance
 from scipy.special import softmax
-from helper import weighted_bleu_score, get_js_distance, emo_dis_bleu, append_scores
+from helper import weighted_bleu_score, get_js_distance, emo_dis_ppl, emo_dis_bleu, append_scores
 
 tqdm.pandas()
 
@@ -64,11 +64,11 @@ tqdm.pandas()
 ########################################################################
 
 # define path
-save_path_prefix = "DEV-mimic-lr-6-w0.05-0.95" #"pure-bleu"
+save_path_prefix = "DEV-mimic-lr-6-ppl" #"pure-bleu"
 load_path_prefix = "../"
 # define weights
-emp_weight = 0.05 #0
-fluency_weight = 0.95 #1
+emp_weight = 0.2 #0
+fluency_weight = 0.8 #1
 
 # We first define the configuration of the experiment, defining the model, the dataset,
 # the training parameters, and the PPO parameters.
@@ -92,7 +92,7 @@ class ScriptArguments:
         default=1, metadata={"help": "the number of gradient accumulation steps"}
     )
     model_save_path: Optional[str] = field(
-        default=f"./{save_path_prefix}-blenderbot-400m-emo-probi-bleu", # blenderbot-400M-distill-empathy-score-only
+        default=f"./{save_path_prefix}-blenderbot-400m-emo-probi-ppl", # blenderbot-400M-distill-empathy-score-only
         metadata={"help": "the path to save the model"},
     )
 
@@ -195,11 +195,12 @@ tokenizer.pad_token = tokenizer.eos_token
 ppo_trainer = PPOTrainer(
     config,
     model,
-    ref_model=ref_model,
+    #ref_model=ref_model,
     tokenizer=tokenizer,
     dataset=dataset,
     data_collator=collator,
     optimizer=optimizer,
+    num_shared_layers=4,
 )
 
 # We then build the reward pipeline, we will use the emotion classification model to compute the reward.
@@ -212,7 +213,7 @@ empathy_tokenizer = AutoTokenizer.from_pretrained(reward_model_id)
 empathy_model = AutoModelForSequenceClassification.from_pretrained(reward_model_id, torch_dtype=torch.float32).to(
     ppo_trainer.accelerator.device
 )
-reward_classifier = pipeline('text-classification', model=reward_model_id, tokenizer=reward_model_id, max_length=512, truncation=True, top_k=None)
+reward_classifier = pipeline('text-classification', model=reward_model_id, tokenizer=reward_model_id, max_length=128, truncation=True, top_k=None)
 
 # We then define the arguments to pass to the `generate` function. These arguments
 # are passed to the `generate` function of the PPOTrainer, which is a wrapper around
@@ -246,10 +247,15 @@ with open(f'{save_path_prefix}_emo_probi_score_train_output.txt', 'w') as f:
                 response = torch.nn.functional.pad(response, (1,2), "constant", 0)
             response_tensors.append(response.squeeze()[-gen_len:])
         response_tensors = padding(response_tensors)
+        #response_tensors_squeeze = [r.squeeze() for r in response_tensors]
         batch["response"] = [tokenizer.decode(r.squeeze(), skip_special_tokens=True) for r in response_tensors]
 
         texts = batch["response"]
         prompts = [q.get("prompt").replace("</s>", "").replace("_comma_", ",") for q in batch["query"]]
+        response_tensors_t = torch.stack(response_tensors)
+        loss = model(input_ids=response_tensors_t, labels=response_tensors_t)[1] # get loss
+        ppl = torch.exp(loss).cpu().detach().numpy()
+        inverse_ppl = 1 / ppl # inverse perplexity
 
         score_list = []
 
@@ -269,7 +275,9 @@ with open(f'{save_path_prefix}_emo_probi_score_train_output.txt', 'w') as f:
         prompt_results = reward_classifier(prompts)
         emo_results = reward_classifier(texts)
 
-        score_list, _, _ = logit(emo_dis_bleu(batch["query"], batch["response"], prompt_results, emo_results, weights=[emp_weight, fluency_weight]))
+        print(f"PPL: {ppl}, inverse ppl: {inverse_ppl}")
+        score_list, _, _ = emo_dis_ppl(prompt_results, emo_results, inverse_ppl, weights=[emp_weight, fluency_weight])
+        score_list = logit(score_list)
         rewards = [torch.tensor(output) for output in score_list] # change reward
 
         # Run PPO step
@@ -289,6 +297,8 @@ with open(f'{save_path_prefix}_emo_probi_score_train_output.txt', 'w') as f:
                 BLEU_score_list = []
                 prompts = []
                 texts = []
+                ppl_list = []
+
                 for dev_query in dev_dataset:
                     input_texts = dev_query["prompt"]
                     prompts.append(input_texts)
@@ -296,21 +306,31 @@ with open(f'{save_path_prefix}_emo_probi_score_train_output.txt', 'w') as f:
                     gen_len = output_length_sampler()
                     generation_kwargs["max_new_tokens"] = gen_len
                     outputs = ppo_trainer.generate(dev_input_ids, do_sample=True, max_new_tokens=40, use_cache=True)
+                    loss = model(input_ids=outputs, labels=outputs)[1]
+                    ppl = torch.exp(loss).cpu().detach().numpy()
+                    ppl_list.append(ppl)
+                    inverse_ppl = 1 / ppl
                     dev_response = tokenizer.batch_decode(outputs, skip_special_tokens=True)
                     texts.append(dev_response[0])
+                    """
                     dev_response = word_tokenize(dev_response[0])
                     dev_target = word_tokenize(dev_query["target"])
                     dev_BLEUscore = weighted_bleu_score(dev_target, dev_response)
                     BLEU_score_list.append(dev_BLEUscore)
+                    """
 
-                mean_bleu = sum(BLEU_score_list) / len(BLEU_score_list)
+                #mean_bleu = sum(BLEU_score_list) / len(BLEU_score_list)
+                mean_ppl = sum(ppl_list) / len(ppl_list)
                 # calculate emo distribution
                 prompt_results = reward_classifier(prompts)
                 emo_results = reward_classifier(texts)
+                list_current_score, list_emo_score, mean_emo_score = emo_dis_ppl(prompt_results, emo_results, inverse_ppl, weights=[emp_weight, fluency_weight])
+                """
                 list_emo_score, mean_emo_score = get_js_distance(prompt_results, emo_results)
                 BLEU_score_list = [(b) * fluency_weight for b in BLEU_score_list]
                 list_emo_score = [e * emp_weight for e in list_emo_score]
                 list_current_score = [sum(x) for x in zip(BLEU_score_list, list_emo_score)]
+                """
                 # current_score = mean((emo_score * emp_weight) + (bleu * fluency_weight))
                 current_score = sum(list_current_score) / len(list_current_score)
 
@@ -318,9 +338,9 @@ with open(f'{save_path_prefix}_emo_probi_score_train_output.txt', 'w') as f:
                     best_score = current_score
                     print(f"\nSaving model at epoch {epoch}. \n")
                     if ppo_trainer.accelerator.is_main_process:
-                        ppo_trainer.save_pretrained(f"{model_save_path}-epoch{epoch}-score{np.float32(current_score)}-bleu{np.float32(mean_bleu)}")
+                        ppo_trainer.save_pretrained(f"{model_save_path}-epoch{epoch}-score{np.float32(current_score)}-ppl{np.float32(mean_ppl)}")
                     f.write(f"\nSaving model at epoch {epoch}. \n")
-                    f.write(f"Mean BLEU of this epoch: {mean_bleu}. \n")
+                    f.write(f"Mean perplexity of this epoch: {mean_ppl}. \n")
                     f.write(f"Mean JS distance of this epoch: {mean_emo_score} \n")
                     f.write(f"Score of this epoch: {current_score}. \n")
             except Exception as err:
@@ -341,24 +361,36 @@ with open(f'{save_path_prefix}_emo_probi_score_train_output.txt', 'w') as f:
             gen_len = output_length_sampler()
             generation_kwargs["max_new_tokens"] = gen_len
             outputs = ppo_trainer.generate(dev_input_ids, do_sample=True, max_new_tokens=40, use_cache=True)
+            loss = model(input_ids=outputs, labels=outputs)[1]
+            ppl = torch.exp(loss).cpu().detach().numpy()
+            ppl_list.append(ppl)
+            inverse_ppl = 1 / ppl
             dev_response = tokenizer.batch_decode(outputs, skip_special_tokens=True)
             texts.append(dev_response[0])
+            """
             dev_response = word_tokenize(dev_response[0])
             dev_target = word_tokenize(dev_query["target"])
             dev_BLEUscore = weighted_bleu_score(dev_target, dev_response)
             BLEU_score_list.append(dev_BLEUscore)
+            """
 
-        mean_bleu = sum(BLEU_score_list) / len(BLEU_score_list)
+        #mean_bleu = sum(BLEU_score_list) / len(BLEU_score_list)
+        mean_ppl = sum(ppl_list) / len(ppl_list)
         # calculate emo distribution
         prompt_results = reward_classifier(prompts)
         emo_results = reward_classifier(texts)
+        list_current_score, list_emo_score, mean_emo_score = emo_dis_ppl(prompt_results, emo_results, inverse_ppl, weights=[emp_weight, fluency_weight])
+        """
         list_emo_score, mean_emo_score = get_js_distance(prompt_results, emo_results)
         BLEU_score_list = [(b) * fluency_weight for b in BLEU_score_list]
         list_emo_score = [e * emp_weight for e in list_emo_score]
         current_score = [sum(x) for x in zip(BLEU_score_list, list_emo_score)]
         mean_score = sum(current_score) / len(current_score)
+        """
+        current_score = sum(list_current_score) / len(list_current_score)
+
         if ppo_trainer.accelerator.is_main_process:
-            ppo_trainer.save_pretrained(f"{model_save_path}-last-score{mean_score}-bleu{np.float32(mean_bleu)}")
+            ppo_trainer.save_pretrained(f"{model_save_path}-last-score{current_score}-ppl{np.float32(mean_ppl)}")
     except Exception as err:
         with open(f'{save_path_prefix}_error_log_emo_probi_score_last.txt', 'w') as err_log:
             err_log.write(f"Unexpected {err=}, {type(err)=}")

@@ -25,7 +25,7 @@ model = AutoModelForSeq2SeqLM.from_pretrained(model_id, device_map={"": device},
 tokenizer = AutoTokenizer.from_pretrained(model_id)
 tokenizer.pad_token = tokenizer.eos_token
 tokenizer.padding_side = "left"
-input_texts = ["The heat is driving me crazy. "]
+input_texts = ["The heat is driving me crazy. ", "I cannot swim."]
 #inputs.input_ids = inputs.input_ids[:context_length]
 #inputs.attention_mask = inputs.attention_mask[:context_length]
 
@@ -40,6 +40,18 @@ empathy_model = AutoModelForSequenceClassification.from_pretrained(empathy_model
 empathy_classifier = pipeline('text-classification', model = empathy_model_id)
 result = empathy_classifier(generated_texts)
 print(result)
+
+#inputs = tokenizer("ABC is a startup based in New York City and Paris", return_tensors = "pt")
+ph = model(input_ids = outputs, labels = outputs)
+loss = ph.loss
+ppl = torch.exp(loss)
+print(ppl)
+
+"""
+inputs_wiki_text = tokenizer("Generative Pretrained Transformer is an opensource artificial intelligence created by OpenAI in February 2019", return_tensors = "pt")
+loss = model(input_ids = inputs_wiki_text["input_ids"], labels = inputs_wiki_text["input_ids"]).loss
+ppl = torch.exp(loss)
+"""
 
 
 """
