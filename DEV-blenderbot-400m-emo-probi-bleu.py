@@ -42,7 +42,7 @@ from nltk.tokenize import word_tokenize
 #from classifiers import get_sentence_score
 from scipy.spatial import distance
 from scipy.special import softmax
-from helper import weighted_bleu_score, get_js_distance, emo_dis_ppl, emo_dis_bleu, append_scores
+from helper import weighted_bleu_score, get_js_distance, emo_dis_ppl, emo_dis_ppl_toxic, load_toxicity_classifier, load_empathy_classifier, load_emo_classifier, emo_dis_bleu, append_scores
 
 tqdm.pandas()
 
@@ -64,11 +64,16 @@ tqdm.pandas()
 ########################################################################
 
 # define path
-save_path_prefix = "DEV-mimic-lr-6-ppl" #"pure-bleu"
+save_path_prefix = "test_score_range_toxic" #"DEV-mimic-lr-6-ppl-toxic" #"pure-bleu"
 load_path_prefix = "../"
 # define weights
-emp_weight = 0.2 #0
-fluency_weight = 0.8 #1
+emp_weight = 0.4 #0
+toxicity_weight = 0.2
+fluency_weight = 0.4 #1
+
+score_min = 100
+score_max = 0
+DEV = False
 
 # We first define the configuration of the experiment, defining the model, the dataset,
 # the training parameters, and the PPO parameters.
@@ -158,7 +163,7 @@ def build_dataset(
     ds.set_format(type="torch")
 
     ds = ds.train_test_split(test_size=0.2, shuffle=False)["train"]
-    #ds = ds.shuffle(seed=2023).select(range(5000))
+    ds = ds.shuffle(seed=2023).select(range(1000))
     return ds
 
 
@@ -215,6 +220,13 @@ empathy_model = AutoModelForSequenceClassification.from_pretrained(reward_model_
 )
 reward_classifier = pipeline('text-classification', model=reward_model_id, tokenizer=reward_model_id, max_length=128, truncation=True, top_k=None)
 
+toxicity_model_id = "martin-ha/toxic-comment-model"
+toxicity_tokenizer = AutoTokenizer.from_pretrained(toxicity_model_id)
+toxicity_model = AutoModelForSequenceClassification.from_pretrained(toxicity_model_id, torch_dtype=torch.float32).to(
+    ppo_trainer.accelerator.device
+)
+toxicity_classifier = pipeline('text-classification', model=toxicity_model_id, tokenizer=toxicity_model_id, max_length=128, truncation=True)
+
 # We then define the arguments to pass to the `generate` function. These arguments
 # are passed to the `generate` function of the PPOTrainer, which is a wrapper around
 # the `generate` function of the trained model.
@@ -255,11 +267,13 @@ with open(f'{save_path_prefix}_emo_probi_score_train_output.txt', 'w') as f:
         response_tensors_t = torch.stack(response_tensors)
         loss = model(input_ids=response_tensors_t, labels=response_tensors_t)[1] # get loss
         ppl = torch.exp(loss).cpu().detach().numpy()
+        ppl = min(ppl, 1000) # clip perplexity to 1000
         inverse_ppl = 1 / ppl # inverse perplexity
 
         score_list = []
 
         if counter % 100 == 0:
+            f.write(f"Score min: {score_min}, score max: {score_max}")
             f.write(f"Counter: {counter}, best BLEU: {best_score}")
             f.write('\n')
             for q in range(len(batch["query"])):
@@ -275,10 +289,20 @@ with open(f'{save_path_prefix}_emo_probi_score_train_output.txt', 'w') as f:
         prompt_results = reward_classifier(prompts)
         emo_results = reward_classifier(texts)
 
+        toxicity_results = toxicity_classifier(texts)
+
         print(f"PPL: {ppl}, inverse ppl: {inverse_ppl}")
-        score_list, _, _ = emo_dis_ppl(prompt_results, emo_results, inverse_ppl, weights=[emp_weight, fluency_weight])
+        #score_list, _, _ = emo_dis_ppl(prompt_results, emo_results, inverse_ppl, weights=[emp_weight, fluency_weight])
+        score_list, _, _ = emo_dis_ppl_toxic(prompt_results, emo_results, inverse_ppl, toxicity_results, weights=[emp_weight, toxicity_weight, fluency_weight])
+        if max(score_list) > score_max:
+            score_max = max(score_list)
+        if min(score_list) < score_min:
+            score_min = min(score_list)
+        print(f"Score min: {score_min}, score max: {score_max}")
+        print(f"Score list: {score_list} \n")
         score_list = logit(score_list)
         rewards = [torch.tensor(output) for output in score_list] # change reward
+
 
         # Run PPO step
         stats = ppo_trainer.step(query_tensors, response_tensors, rewards)
@@ -290,7 +314,7 @@ with open(f'{save_path_prefix}_emo_probi_score_train_output.txt', 'w') as f:
         counter += 1
 
         # Save model every 100 epochs
-        if epoch % 200 == 0:
+        if epoch % 200 == 0 and DEV:
             # validate
             try:
                 print(f"Start validation for epoch {epoch} with counter {counter}.")
@@ -354,6 +378,7 @@ with open(f'{save_path_prefix}_emo_probi_score_train_output.txt', 'w') as f:
         BLEU_score_list = []
         prompts = []
         texts = []
+        ppl_list = []
         for dev_query in dev_dataset:
             input_texts = dev_query["prompt"]
             prompts.append(input_texts)
@@ -375,11 +400,22 @@ with open(f'{save_path_prefix}_emo_probi_score_train_output.txt', 'w') as f:
             """
 
         #mean_bleu = sum(BLEU_score_list) / len(BLEU_score_list)
+        print("Start score calculation...")
         mean_ppl = sum(ppl_list) / len(ppl_list)
         # calculate emo distribution
         prompt_results = reward_classifier(prompts)
         emo_results = reward_classifier(texts)
-        list_current_score, list_emo_score, mean_emo_score = emo_dis_ppl(prompt_results, emo_results, inverse_ppl, weights=[emp_weight, fluency_weight])
+        toxicity_results = toxicity_classifier(texts)
+        print("Got results for toxicity ")
+        list_current_score, list_emo_score, mean_emo_score = emo_dis_ppl_toxic(prompt_results, emo_results, inverse_ppl, toxicity_results, weights=[emp_weight, toxicity_weight, fluency_weight])
+        print("Update min and max score... ")
+        if max(list_current_score) > score_max:
+            score_max = max(list_current_score)
+        if min(list_current_score) < score_min:
+            score_min = min(list_current_score)
+        print("Write min and max score... ")
+        f.write(f"Score min: {score_min}, score max: {score_max}")
+        f.write(f"Score list: {list_current_score}")
         """
         list_emo_score, mean_emo_score = get_js_distance(prompt_results, emo_results)
         BLEU_score_list = [(b) * fluency_weight for b in BLEU_score_list]
