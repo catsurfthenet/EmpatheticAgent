@@ -8,11 +8,14 @@ import torch
 from datasets import load_dataset, Dataset
 from tqdm import tqdm
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, AutoModelForCausalLM, AutoModelForSequenceClassification, \
-    pipeline
+    pipeline, RobertaTokenizerFast, RobertaForSequenceClassification
+from transformers import TextClassificationPipeline
 #from classifiers import get_sentence_score
 import nltk
 from nltk.tokenize import word_tokenize
+from helper import load_toxicity_classifier, load_empathy_classifier
 
+load_path_prefix = '../'
 device = torch.cuda.current_device() if torch.cuda.is_available() else "cpu"
 
 context_length = 200
@@ -34,12 +37,16 @@ outputs = model.generate(**input_ids, do_sample=True, max_new_tokens=40, use_cac
 generated_texts = tokenizer.batch_decode(outputs, skip_special_tokens=True)
 print(generated_texts)
 
-empathy_model_id = "bdotloh/roberta-base-empathy"
-empathy_tokenizer = AutoTokenizer.from_pretrained(empathy_model_id)
-empathy_model = AutoModelForSequenceClassification.from_pretrained(empathy_model_id, torch_dtype=torch.float32)
-empathy_classifier = pipeline('text-classification', model = empathy_model_id)
+empathy_classifier = load_empathy_classifier(path_prefix="../")
 result = empathy_classifier(generated_texts)
 print(result)
+
+
+toxicity_classifier = load_toxicity_classifier()
+toxicity_result = toxicity_classifier(generated_texts)
+
+print(empathy_classifier("I don't care, get away from me"))
+print(toxicity_classifier("I don't care, get away from me"))
 
 #inputs = tokenizer("ABC is a startup based in New York City and Paris", return_tensors = "pt")
 ph = model(input_ids = outputs, labels = outputs)

@@ -8,26 +8,34 @@ from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipe
     RobertaTokenizerFast
 
 
-def load_emo_classifier():
+def load_emo_classifier(device):
     emo_model_id = "SamLowe/roberta-base-go_emotions"
     emo_tokenizer = AutoTokenizer.from_pretrained(emo_model_id)
     emo_model = AutoModelForSequenceClassification.from_pretrained(emo_model_id, torch_dtype=torch.float32).to(device)
     emo_classifier = pipeline('text-classification', model=emo_model_id, tokenizer=emo_model_id, max_length=512,
                               truncation=True, top_k=None)
     return emo_classifier
-def load_empathy_classifier(path_prefix=""):
+
+def load_empathy_classifier(path_prefix="", cuda=False):
     empathy_model_id = f"{path_prefix}models/roberta-empathy-03-06-2023-18_21_58"
     empathy_model = RobertaForSequenceClassification.from_pretrained(empathy_model_id, torch_dtype=torch.float32)
     empathy_tokenizer = RobertaTokenizerFast.from_pretrained('roberta-base')
-    empathy_classifier = pipeline('text-classification', model=empathy_model_id, tokenizer=empathy_tokenizer,
+    if cuda:
+        empathy_classifier = pipeline('text-classification', model=empathy_model_id, tokenizer=empathy_tokenizer,
+                                      max_length=512, truncation=True, device=0)
+    else:
+        empathy_classifier = pipeline('text-classification', model=empathy_model_id, tokenizer=empathy_tokenizer,
                                   max_length=512, truncation=True)
     return empathy_classifier
-def load_toxicity_classifier():
+def load_toxicity_classifier(cuda=False):
     toxicity_model_id = "martin-ha/toxic-comment-model"
     toxicity_tokenizer = AutoTokenizer.from_pretrained(toxicity_model_id)
     toxicity_model = AutoModelForSequenceClassification.from_pretrained(toxicity_model_id)
-    toxicity_classifier = pipeline('text-classification', model=toxicity_model, tokenizer=toxicity_tokenizer,
-                                   top_k=None)
+    if cuda:
+        toxicity_classifier = pipeline('text-classification', model=toxicity_model, tokenizer=toxicity_tokenizer,
+                                       top_k=None, device=0)
+    else:
+        toxicity_classifier = pipeline('text-classification', model=toxicity_model, tokenizer=toxicity_tokenizer)
     return toxicity_classifier
 
 def append_scores(labels, original, sample):
@@ -78,7 +86,8 @@ def get_js_distance(prompt_results, emo_results):
 
 def emo_dis_ppl_toxic(prompt_results, emo_results, inverse_perplexity, toxicity, weights=[0.2, 0.7, 0.1]):
     emo_weight = weights[0]
-    fluency_weight = weights[1]
+    toxicity_weight = weights[1]
+    fluency_weight = weights[2]
     score_list = []
     weighted_ppl = inverse_perplexity * fluency_weight
     list_emo_score = [0] * len(prompt_results)
@@ -86,9 +95,13 @@ def emo_dis_ppl_toxic(prompt_results, emo_results, inverse_perplexity, toxicity,
         list_emo_score, mean_emo_score = get_js_distance(prompt_results, emo_results)
 
     for i in range(len(list_emo_score)):
+        if toxicity[i]["label"] == "toxic":
+            toxic_score = 0
+        else:
+            toxic_score = toxicity[i]["score"]
         emp_score = list_emo_score[i]
         # better response higher score
-        temp_score = (emp_score * emo_weight) + (weighted_ppl)
+        temp_score = (emp_score * emo_weight) + (weighted_ppl) + (toxicity_weight * toxic_score)
         score_list.append(np.float32(temp_score))
 
     return score_list, list_emo_score, mean_emo_score
