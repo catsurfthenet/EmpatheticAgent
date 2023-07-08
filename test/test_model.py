@@ -10,7 +10,7 @@ import nltk
 from nltk.tokenize import word_tokenize
 from scipy.spatial import distance
 from scipy.special import softmax, logit
-from helper import weighted_bleu_score, get_js_distance, emo_dis_bleu, append_scores
+from helper import weighted_bleu_score, get_js_distance, load_empathy_classifier, load_emo_classifier, load_toxicity_classifier, emo_dis_bleu, append_scores
 
 text_generation_model = "ppo_model" # blenderbot, ppo_model
 ppo_model = "../DEV-mimic-high-reward-blenderbot-400m-emo-probi-bleu-last-score0.7700437359931219-bleu0.06567799299955368"
