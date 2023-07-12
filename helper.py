@@ -84,21 +84,25 @@ def get_js_distance(prompt_results, emo_results):
     mean_js_distance = sum(list_js_distance) / len(list_js_distance)
     return list_js_distance, mean_js_distance
 
-def emo_dis_ppl_toxic(prompt_results, emo_results, inverse_perplexity, toxicity, weights=[0.2, 0.7, 0.1]):
+def emo_dis_ppl_toxic(prompt_results, emo_results, inverse_perplexity, toxicity, weights=[0.4, 0.4, 0.2]):
     emo_weight = weights[0]
     toxicity_weight = weights[1]
     fluency_weight = weights[2]
     score_list = []
     weighted_ppl = inverse_perplexity * fluency_weight
     list_emo_score = [0] * len(prompt_results)
+    mean_emo_score = 0
     if emo_weight > 0:
         list_emo_score, mean_emo_score = get_js_distance(prompt_results, emo_results)
 
     for i in range(len(list_emo_score)):
-        if toxicity[i]["label"] == "toxic":
-            toxic_score = 0
+        if toxicity_weight > 0:
+            if toxicity[i]["label"] == "toxic":
+                toxic_score = 0
+            else:
+                toxic_score = toxicity[i]["score"]
         else:
-            toxic_score = toxicity[i]["score"]
+            toxic_score = 0
         emp_score = list_emo_score[i]
         # better response higher score
         temp_score = (emp_score * emo_weight) + (weighted_ppl) + (toxicity_weight * toxic_score)

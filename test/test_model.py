@@ -71,7 +71,7 @@ with open(f"{load_path_prefix}modeldata/test_dialogue_dataset.p", "rb") as f:
 #test_dataset = Dataset.from_dict(test_dataset)[:10]
 test_dataset = Dataset.from_dict(test_dataset).shuffle(seed=2023).select(range(1000))
 #test_dataset = Dataset.from_dict(test_dataset)
-test_dataloader = DataLoader(test_dataset, batch_size=8, shuffle=False)
+#test_dataloader = DataLoader(test_dataset, batch_size=8, shuffle=False)
 
 def tokenize(sample):
     prompt = sample["prompt"] # prompt

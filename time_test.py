@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import math
 import os
 import pickle
 from datasets import Dataset, DatasetDict
@@ -75,6 +76,7 @@ fluency_weight = 0.4 #1
 score_min = 100
 score_max = 0
 DEV = True
+dev_batch_size = 8
 
 # We first define the configuration of the experiment, defining the model, the dataset,
 # the training parameters, and the PPO parameters.
@@ -155,8 +157,9 @@ def build_dataset(
         prompt = sample["prompt"] # prompt
         continuation = sample["target"] # utterance
 
-        sample["input_ids"] = tokenizer.encode(prompt)[: input_size()]
+        sample["input_ids"] = tokenizer.encode(prompt, padding=True, truncation=True, max_length=128)[: input_size()]
         #sample["target_ids"] = tokenizer.encode(continuation)[: input_size()]
+        #sample["input_ids"] += [0] * max((128 - len(sample["input_ids"])), 0)
         sample["query"] = {"prompt": tokenizer.decode(sample["input_ids"]), "target": continuation}
         return sample
 
@@ -173,9 +176,9 @@ def build_dataset(
 min_input_length = 30
 max_input_length = 100
 dataset = build_dataset(config, dataset_path='modeldata/dialogue_dataset.p', input_min_text_length=min_input_length, input_max_text_length=max_input_length, size=5000)
-dev_dataset = build_dataset(config, dataset_path='modeldata/dev_dialogue_dataset.p', input_min_text_length=min_input_length, input_max_text_length=max_input_length, size=1000)
-dev_dataloader = DataLoader(dev_dataset, batch_size=8, shuffle=False)
-
+dev_dataset = build_dataset(config, dataset_path='modeldata/dev_dialogue_dataset.p', input_min_text_length=min_input_length, input_max_text_length=max_input_length, size=500)
+#dev_dataloader = DataLoader(dev_dataset, batch_size=dev_batch_size, shuffle=False)
+#batch = next(iter(dev_dataloader))
 def collator(data):
     return dict((key, [d[key] for d in data]) for key in data[0])
 
@@ -193,6 +196,7 @@ model = AutoModelForSeq2SeqLMWithValueHead.from_pretrained(model)
 ref_model = create_reference_model(model)
 
 # We make sure to use `Adam` optimizer on the model parameters that require gradients.
+criterion = torch.nn.CrossEntropyLoss()
 optimizer = Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=config.learning_rate)
 
 # only for this model.
@@ -276,11 +280,12 @@ with open(f'{save_path_prefix}_emo_probi_score_train_output.txt', 'w') as f:
         prompts = [q.get("prompt").replace("</s>", "").replace("_comma_", ",") for q in batch["query"]]
         response_tensors_t = torch.stack(response_tensors)
         loss = model(input_ids=response_tensors_t, labels=response_tensors_t)[1] # get loss
-        ppl = torch.exp(loss).cpu().detach().numpy()
-        ppl = min(ppl, 1000) # clip perplexity to within 1000
+        ppl_og = torch.exp(loss).cpu().detach().numpy()
+        ppl = min(ppl_og, 1000) # clip perplexity to within 1000
         inverse_ppl = 1 / ppl # inverse perplexity
         ppl_time = time.time()
         print(f"Get ppl in {ppl_time - decode_resp}")
+        print(f"PPL: {ppl_og}, inverse ppl: {inverse_ppl}")
 
         score_list = []
 
@@ -308,7 +313,7 @@ with open(f'{save_path_prefix}_emo_probi_score_train_output.txt', 'w') as f:
         end_model_eval = time.time()
         print(f"3 Model evaluations in {end_model_eval - start_model_eval}")
 
-        print(f"PPL: {ppl}, inverse ppl: {inverse_ppl}")
+
         #score_list, _, _ = emo_dis_ppl(prompt_results, emo_results, inverse_ppl, weights=[emp_weight, fluency_weight])
         score_list, _, _ = emo_dis_ppl_toxic(prompt_results, emo_results, inverse_ppl, toxicity_results, weights=[emp_weight, toxicity_weight, fluency_weight])
         end_get_score = time.time()
@@ -326,8 +331,8 @@ with open(f'{save_path_prefix}_emo_probi_score_train_output.txt', 'w') as f:
         print(f"Convert score to logit and tensor in {end_get_result - end_get_score}")
 
         # Run PPO step
-        #stats = ppo_trainer.step(query_tensors, response_tensors, rewards)
-        #ppo_trainer.log_stats(stats, batch, rewards)
+        stats = ppo_trainer.step(query_tensors, response_tensors, rewards)
+        ppo_trainer.log_stats(stats, batch, rewards)
         end_ppo_step = time.time()
         print(f"PPO steps in {end_ppo_step - end_get_result}")
 
@@ -339,61 +344,67 @@ with open(f'{save_path_prefix}_emo_probi_score_train_output.txt', 'w') as f:
         # Save model every 200 epochs if model has improved in performance
         if epoch % 200 == 0 and DEV:
             # validate
-            try:
-                print(f"Start validation for epoch {epoch} with counter {counter}.")
-                BLEU_score_list = []
-                prompts = []
-                texts = []
-                ppl_list = []
+            #try:
+            print(f"Start validation for epoch {epoch} with counter {counter}.")
+            BLEU_score_list = []
+            prompts = []
+            texts = []
+            ppl_list = []
 
-                for dev_batch in dev_dataloader:
-                    input_texts = dev_batch["prompt"]
-                    prompts.append(input_texts)
-                    dev_input_ids = dev_batch["input_ids"].to(ppo_trainer.accelerator.device)
-                    gen_len = output_length_sampler()
-                    generation_kwargs["max_new_tokens"] = gen_len
-                    outputs = ppo_trainer.generate(dev_input_ids, do_sample=True, max_new_tokens=40, use_cache=True)
-                    loss = model(input_ids=outputs, labels=outputs)[1]
-                    ppl = torch.exp(loss).cpu().detach().numpy()
-                    ppl_list.append(ppl)
-                    inverse_ppl = 1 / ppl
-                    dev_response = tokenizer.batch_decode(outputs, skip_special_tokens=True)
-                    texts.append(dev_response[0])
-                    """
-                    dev_response = word_tokenize(dev_response[0])
-                    dev_target = word_tokenize(dev_query["target"])
-                    dev_BLEUscore = weighted_bleu_score(dev_target, dev_response)
-                    BLEU_score_list.append(dev_BLEUscore)
-                    """
-                dev_end_resp_gen = time.time()
-                print(f"Dev response generation time {dev_end_resp_gen - end_ppo_step}")
-                #mean_bleu = sum(BLEU_score_list) / len(BLEU_score_list)
-                mean_ppl = sum(ppl_list) / len(ppl_list)
-                # calculate emo distribution
-                prompt_results = reward_classifier(prompts)
-                emo_results = reward_classifier(texts)
-                list_current_score, list_emo_score, mean_emo_score = emo_dis_ppl(prompt_results, emo_results, inverse_ppl, weights=[emp_weight, fluency_weight])
-                dev_end_score = time.time()
-                print(f"Dev get score in {dev_end_score - dev_end_resp_gen}")
+            #loop_num = math.floor(len(dataset) / dev_batch_size)
+            #for b in range(loop_num):
+            for dev_query in dev_dataset:
+                #dev_batch = next(iter(dev_dataloader))
+                #dev_query = dev_batch
+                input_texts = dev_query["prompt"]
+                prompts.append(input_texts)
+                dev_input_ids = dev_query["input_ids"].to(ppo_trainer.accelerator.device)
+                gen_len = output_length_sampler()
+                generation_kwargs["max_new_tokens"] = gen_len
+                outputs = ppo_trainer.generate(dev_input_ids, do_sample=True, max_new_tokens=40, use_cache=True)
+                loss = model(input_ids=outputs, labels=outputs)[1]
+                ppl = torch.exp(loss).cpu().detach().numpy()
+                ppl_list.append(ppl)
+                inverse_ppl = 1 / ppl
+                dev_response = tokenizer.batch_decode(outputs, skip_special_tokens=True)
+                texts.append(dev_response[0])
+                """
+                dev_response = word_tokenize(dev_response[0])
+                dev_target = word_tokenize(dev_query["target"])
+                dev_BLEUscore = weighted_bleu_score(dev_target, dev_response)
+                BLEU_score_list.append(dev_BLEUscore)
+                """
+            dev_end_resp_gen = time.time()
+            print(f"Dev response generation time {dev_end_resp_gen - end_ppo_step}")
+            #mean_bleu = sum(BLEU_score_list) / len(BLEU_score_list)
+            mean_ppl = sum(ppl_list) / len(ppl_list)
+            # calculate emo distribution
+            prompt_results = reward_classifier(prompts)
+            emo_results = reward_classifier(texts)
+            list_current_score, list_emo_score, mean_emo_score = emo_dis_ppl(prompt_results, emo_results, inverse_ppl, weights=[emp_weight, fluency_weight])
+            dev_end_score = time.time()
+            print(f"Dev get score in {dev_end_score - dev_end_resp_gen}")
 
-                # current_score = mean((emo_score * emp_weight) + (bleu * fluency_weight))
-                current_score = sum(list_current_score) / len(list_current_score)
+            # current_score = mean((emo_score * emp_weight) + (bleu * fluency_weight))
+            current_score = sum(list_current_score) / len(list_current_score)
 
-                if current_score > best_score:
-                    best_score = current_score
-                    print(f"\nSaving model at epoch {epoch}. \n")
-                    if ppo_trainer.accelerator.is_main_process:
-                        ppo_trainer.save_pretrained(f"{model_save_path}-epoch{epoch}-score{np.float32(current_score)}-ppl{np.float32(mean_ppl)}")
-                    f.write(f"\nSaving model at epoch {epoch}. \n")
-                    f.write(f"Mean perplexity of this epoch: {mean_ppl}. \n")
-                    f.write(f"Mean JS distance of this epoch: {mean_emo_score} \n")
-                    f.write(f"Score of this epoch: {current_score}. \n")
-                    dev_save_resp = time.time()
-                    print(f"Dev save response in {dev_save_resp - dev_end_score}")
+            if current_score > best_score:
+                best_score = current_score
+                print(f"\nSaving model at epoch {epoch}. \n")
+                if ppo_trainer.accelerator.is_main_process:
+                    ppo_trainer.save_pretrained(f"{model_save_path}-epoch{epoch}-score{np.float32(current_score)}-ppl{np.float32(mean_ppl)}")
+                f.write(f"\nSaving model at epoch {epoch}. \n")
+                f.write(f"Mean perplexity of this epoch: {mean_ppl}. \n")
+                f.write(f"Mean JS distance of this epoch: {mean_emo_score} \n")
+                f.write(f"Score of this epoch: {current_score}. \n")
+                dev_save_resp = time.time()
+                print(f"Dev save response in {dev_save_resp - dev_end_score}")
+            """
             except Exception as err:
                 with open(f'{save_path_prefix}_error_log_empathy_score_epoch{epoch}.txt', 'w') as err_log:
                     err_log.write(f"Unexpected {err=}, {type(err)=}")
                 err_log.close()
+            """
             end_dev = time.time()
             print(f"Validation in {end_dev - end_ppo_step}")
 

@@ -43,7 +43,7 @@ from nltk.tokenize import word_tokenize
 from scipy.spatial import distance
 from scipy.special import softmax
 from helper import weighted_bleu_score, get_js_distance, emo_dis_ppl, emo_dis_ppl_toxic, load_toxicity_classifier, load_empathy_classifier, load_emo_classifier, emo_dis_bleu, append_scores
-from torch.utils.data import DataLoader
+#from torch.utils.data import DataLoader
 
 tqdm.pandas()
 
@@ -65,18 +65,23 @@ tqdm.pandas()
 ########################################################################
 
 # define path
-save_path_prefix = "DEV_lr-4_ppl_toxic_w4-4-2" #"DEV-mimic-lr-6-ppl-toxic"
-load_path_prefix = "../"
+save_path_prefix = "DEV_cont3_lr-10_emo_toxic_w6-4-0" #"DEV_lr-7_ppl_toxic_w4-6-0" #"DEV-mimic-lr-6-ppl-toxic"
+load_path_prefix = "./"
+ppo_model = f"{load_path_prefix}DEV_lr-9_ppl_toxic_w6-4-0-blenderbot-400m-emo-probi-ppl-last-score0.6292313380390405-ppl4.034670352935791"
+blenderbot = "facebook/blenderbot-400M-distill"
+model_path = ppo_model
 # define weights
-emp_weight = 0.4 #0
+emp_weight = 0.6 #0
 toxicity_weight = 0.4
-fluency_weight = 0.2 #1
-
+fluency_weight = 0 #1
+lr = 1.47e-10
+ppo_epoch_num = 3
 score_min = 100
 score_max = 0
 DEV = True
-checkpoint = 3000
+checkpoint = 1500
 
+device = torch.cuda.current_device() if torch.cuda.is_available() else "cpu"
 # We first define the configuration of the experiment, defining the model, the dataset,
 # the training parameters, and the PPO parameters.
 # Check the default arguments in the `PPOConfig` class for more details.
@@ -90,16 +95,16 @@ class ScriptArguments:
 
     # NOTE: gpt2 models use Conv1D instead of Linear layers which are not yet supported in 8 bit mode
     # models like gpt-neo* models are more suitable.
-    model_name: Optional[str] = field(default="facebook/blenderbot-400M-distill", metadata={"help": "the model name"})
+    model_name: Optional[str] = field(default=model_path, metadata={"help": "the model name"})
     log_with: Optional[str] = field(default=None, metadata={"help": "use 'wandb' to log with wandb"})
-    learning_rate: Optional[float] = field(default=(1.47e-4) * 2, metadata={"help": "the learning rate"})
+    learning_rate: Optional[float] = field(default=(lr) * 2, metadata={"help": "the learning rate"})
     mini_batch_size: Optional[int] = field(default=4, metadata={"help": "the PPO minibatch size"})
     batch_size: Optional[int] = field(default=16, metadata={"help": "the batch size"})
     gradient_accumulation_steps: Optional[int] = field(
         default=1, metadata={"help": "the number of gradient accumulation steps"}
     )
     model_save_path: Optional[str] = field(
-        default=f"./{save_path_prefix}-blenderbot-400m-emo-probi-ppl", # blenderbot-400M-distill-empathy-score-only
+        default=f"./{save_path_prefix}-emo-toxic", # blenderbot-400M-distill-empathy-score-only
         metadata={"help": "the path to save the model"},
     )
 
@@ -115,7 +120,7 @@ config = PPOConfig(
     model_name=script_args.model_name,
     learning_rate=script_args.learning_rate,
     log_with=script_args.log_with,
-    ppo_epochs=3,
+    ppo_epochs=ppo_epoch_num,
     mini_batch_size=script_args.mini_batch_size,
     batch_size=script_args.batch_size,
     gradient_accumulation_steps=script_args.gradient_accumulation_steps,
@@ -166,7 +171,7 @@ def build_dataset(
     ds.set_format(type="torch")
 
     ds = ds.train_test_split(test_size=0.2, shuffle=False)["train"]
-    if size != -1:
+    if size > -1:
         ds = ds.shuffle(seed=2023).select(range(size))
     return ds
 
@@ -175,8 +180,8 @@ def build_dataset(
 min_input_length = 30
 max_input_length = 100
 dataset = build_dataset(config, dataset_path='modeldata/dialogue_dataset.p', input_min_text_length=min_input_length, input_max_text_length=max_input_length)
-dev_dataset = build_dataset(config, dataset_path='modeldata/dev_dialogue_dataset.p', input_min_text_length=min_input_length, input_max_text_length=max_input_length, size=1000)
-dev_dataloader = DataLoader(dev_dataset, batch_size=8, shuffle=False)
+dev_dataset = build_dataset(config, dataset_path='modeldata/dev_dialogue_dataset.p', input_min_text_length=min_input_length, input_max_text_length=max_input_length, size=800)
+#dev_dataloader = DataLoader(dev_dataset, batch_size=8, shuffle=False)
 
 def collator(data):
     return dict((key, [d[key] for d in data]) for key in data[0])
@@ -192,9 +197,10 @@ model = AutoModelForSeq2SeqLM.from_pretrained(config.model_name, torch_dtype=tor
 # Pass the loaded model to `AutoModelForSeq2SeqLMWithValueHead`.
 model = AutoModelForSeq2SeqLMWithValueHead.from_pretrained(model)
 
-ref_model = create_reference_model(model)
+#ref_model = create_reference_model(model)
 
 # We make sure to use `Adam` optimizer on the model parameters that require gradients.
+#criterion = torch.nn.CrossEntropyLoss()
 optimizer = Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=config.learning_rate)
 
 # only for this model.
@@ -226,6 +232,7 @@ empathy_model = AutoModelForSequenceClassification.from_pretrained(reward_model_
 )
 reward_classifier = pipeline('text-classification', model=reward_model_id, tokenizer=reward_model_id, max_length=128, truncation=True, top_k=None)
 
+#if toxicity_weight > 0:
 toxicity_model_id = "martin-ha/toxic-comment-model"
 toxicity_tokenizer = AutoTokenizer.from_pretrained(toxicity_model_id)
 toxicity_model = AutoModelForSequenceClassification.from_pretrained(toxicity_model_id, torch_dtype=torch.float32).to(
@@ -248,12 +255,11 @@ output_max_length = 50
 output_length_sampler = LengthSampler(output_min_length, output_max_length)
 
 model_save_path = script_args.model_save_path
-epoch_num = 0
+counter = 0
+best_score = 0
+#epoch_num = 0
 #init = time.time()
 with open(f'{save_path_prefix}_emo_probi_score_train_output.txt', 'w') as f:
-    counter = 0
-    best_score = 0
-
     for epoch, batch in tqdm(enumerate(ppo_trainer.dataloader)):
         #start_loop = time.time()
         query_tensors = batch["input_ids"]
@@ -278,6 +284,7 @@ with open(f'{save_path_prefix}_emo_probi_score_train_output.txt', 'w') as f:
         prompts = [q.get("prompt").replace("</s>", "").replace("_comma_", ",") for q in batch["query"]]
         response_tensors_t = torch.stack(response_tensors)
         loss = model(input_ids=response_tensors_t, labels=response_tensors_t)[1] # get loss
+        #loss = criterion()
         ppl = torch.exp(loss).cpu().detach().numpy()
         ppl = min(ppl, 1000) # clip perplexity to within 1000
         inverse_ppl = 1 / ppl # inverse perplexity
@@ -287,7 +294,7 @@ with open(f'{save_path_prefix}_emo_probi_score_train_output.txt', 'w') as f:
         score_list = []
 
         if counter % 100 == 0:
-            start_reg_write = time.time()
+            #start_reg_write = time.time()
             f.write(f"Score min: {score_min}, score max: {score_max}")
             f.write(f"Counter: {counter}, best score: {best_score}")
             f.write('\n')
@@ -303,10 +310,12 @@ with open(f'{save_path_prefix}_emo_probi_score_train_output.txt', 'w') as f:
             #print(f"Record % 100 epoch in {end_reg_write - start_reg_write}")
 
         # Compute sentiment score # noqa
-        start_model_eval = time.time()
+        #start_model_eval = time.time()
+        toxicity_results = []
         prompt_results = reward_classifier(prompts)
         emo_results = reward_classifier(texts)
-        toxicity_results = toxicity_classifier(texts)
+        if toxicity_weight > 0:
+            toxicity_results = toxicity_classifier(texts)
         #end_model_eval = time.time()
         #print(f"3 Model evaluations in {end_model_eval - start_model_eval}")
 
@@ -407,10 +416,10 @@ with open(f'{save_path_prefix}_emo_probi_score_train_output.txt', 'w') as f:
         prompts = []
         texts = []
         ppl_list = []
-        for dev_batch in next(iter(dev_dataloader)):
-            input_texts = dev_batch["prompt"]
+        for dev_query in dev_dataset:
+            input_texts = dev_query["prompt"]
             prompts.append(input_texts)
-            dev_input_ids = dev_batch["input_ids"].to(ppo_trainer.accelerator.device)
+            dev_input_ids = dev_query["input_ids"].to(ppo_trainer.accelerator.device)
             gen_len = output_length_sampler()
             generation_kwargs["max_new_tokens"] = gen_len
             outputs = ppo_trainer.generate(dev_input_ids, do_sample=True, max_new_tokens=40, use_cache=True)
@@ -429,11 +438,13 @@ with open(f'{save_path_prefix}_emo_probi_score_train_output.txt', 'w') as f:
 
         #mean_bleu = sum(BLEU_score_list) / len(BLEU_score_list)
         print("Start score calculation...")
+        toxicity_results = []
         mean_ppl = sum(ppl_list) / len(ppl_list)
         # calculate emo distribution
         prompt_results = reward_classifier(prompts)
         emo_results = reward_classifier(texts)
-        toxicity_results = toxicity_classifier(texts)
+        if toxicity_weight > 0:
+            toxicity_results = toxicity_classifier(texts)
         print("Got results for toxicity ")
         list_current_score, list_emo_score, mean_emo_score = emo_dis_ppl_toxic(prompt_results, emo_results, inverse_ppl, toxicity_results, weights=[emp_weight, toxicity_weight, fluency_weight])
         print("Update min and max score... ")
