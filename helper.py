@@ -7,6 +7,8 @@ import numpy as np
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline, RobertaForSequenceClassification, \
     RobertaTokenizerFast
 
+def get_mean(scores):
+    return (sum(scores) / len(scores))
 
 def load_emo_classifier(device):
     emo_model_id = "SamLowe/roberta-base-go_emotions"
