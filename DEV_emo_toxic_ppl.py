@@ -20,7 +20,7 @@ from typing import Optional
 import time
 import torch
 from datasets import load_dataset
-from torch.optim import Adam
+from torch.optim import Adam, SGD
 import torch.nn.utils.rnn as rnn_utils
 from tqdm import tqdm
 from transformers import (
@@ -64,21 +64,22 @@ tqdm.pandas()
 #
 ########################################################################
 
-# define path
-save_path_prefix = "DEV_cont3_lr-10_emo_toxic_w6-4-0" #"DEV_lr-7_ppl_toxic_w4-6-0" #"DEV-mimic-lr-6-ppl-toxic"
+# define path and variables
+save_path_prefix = "DEV_SGD_lr-9_emo_toxic_w6-4-0" #"DEV_lr-10_emo_toxic_w5-3-2_share6" #"DEV_lr-7_ppl_toxic_w4-6-0" #"DEV-mimic-lr-6-ppl-toxic"
 load_path_prefix = "./"
 ppo_model = f"{load_path_prefix}DEV_lr-9_ppl_toxic_w6-4-0-blenderbot-400m-emo-probi-ppl-last-score0.6292313380390405-ppl4.034670352935791"
 blenderbot = "facebook/blenderbot-400M-distill"
-model_path = ppo_model
+model_path = blenderbot
 # define weights
 emp_weight = 0.6 #0
 toxicity_weight = 0.4
 fluency_weight = 0 #1
-lr = 1.47e-10
-ppo_epoch_num = 3
+lr = 1.47e-9
+ppo_epoch_num = 5
 score_min = 100
 score_max = 0
 DEV = True
+dev_set_size = 800
 checkpoint = 1500
 
 device = torch.cuda.current_device() if torch.cuda.is_available() else "cpu"
@@ -180,7 +181,7 @@ def build_dataset(
 min_input_length = 30
 max_input_length = 100
 dataset = build_dataset(config, dataset_path='modeldata/dialogue_dataset.p', input_min_text_length=min_input_length, input_max_text_length=max_input_length)
-dev_dataset = build_dataset(config, dataset_path='modeldata/dev_dialogue_dataset.p', input_min_text_length=min_input_length, input_max_text_length=max_input_length, size=800)
+dev_dataset = build_dataset(config, dataset_path='modeldata/dev_dialogue_dataset.p', input_min_text_length=min_input_length, input_max_text_length=max_input_length, size=dev_set_size)
 #dev_dataloader = DataLoader(dev_dataset, batch_size=8, shuffle=False)
 
 def collator(data):
@@ -201,7 +202,8 @@ model = AutoModelForSeq2SeqLMWithValueHead.from_pretrained(model)
 
 # We make sure to use `Adam` optimizer on the model parameters that require gradients.
 #criterion = torch.nn.CrossEntropyLoss()
-optimizer = Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=config.learning_rate)
+#optimizer = Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=config.learning_rate)
+optimizer = SGD(filter(lambda p: p.requires_grad, model.parameters()), lr=config.learning_rate)
 
 # only for this model.
 tokenizer = AutoTokenizer.from_pretrained(config.model_name)
@@ -216,7 +218,7 @@ ppo_trainer = PPOTrainer(
     dataset=dataset,
     data_collator=collator,
     optimizer=optimizer,
-    num_shared_layers=4,
+    num_shared_layers=4, # total number of layers
 )
 
 # We then build the reward pipeline, we will use the emotion classification model to compute the reward.
