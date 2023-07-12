@@ -104,7 +104,7 @@ class ScriptArguments:
         default=1, metadata={"help": "the number of gradient accumulation steps"}
     )
     model_save_path: Optional[str] = field(
-        default=f"./{save_path_prefix}-emo-toxic", # blenderbot-400M-distill-empathy-score-only
+        default=f"./{save_path_prefix}", # blenderbot-400M-distill-empathy-score-only
         metadata={"help": "the path to save the model"},
     )
 
@@ -259,7 +259,7 @@ counter = 0
 best_score = 0
 #epoch_num = 0
 #init = time.time()
-with open(f'{save_path_prefix}_emo_probi_score_train_output.txt', 'w') as f:
+with open(f'{save_path_prefix}_score_train_output.txt', 'w') as f:
     for epoch, batch in tqdm(enumerate(ppo_trainer.dataloader)):
         #start_loop = time.time()
         query_tensors = batch["input_ids"]

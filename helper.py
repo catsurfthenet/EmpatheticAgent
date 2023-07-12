@@ -10,6 +10,12 @@ from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipe
 def get_mean(scores):
     return (sum(scores) / len(scores))
 
+def get_bertscore_results(bertscore_results):
+    precision = get_mean(bertscore_results["precision"])
+    recall = get_mean(bertscore_results["recall"])
+    f1 = get_mean(bertscore_results["f1"])
+    return precision, recall, f1
+
 def load_emo_classifier(device):
     emo_model_id = "SamLowe/roberta-base-go_emotions"
     emo_tokenizer = AutoTokenizer.from_pretrained(emo_model_id)

@@ -11,16 +11,16 @@ import nltk
 from nltk.tokenize import word_tokenize
 from scipy.spatial import distance
 from scipy.special import softmax, logit
-from helper import weighted_bleu_score, get_js_distance, load_empathy_classifier, load_emo_classifier, load_toxicity_classifier, emo_dis_bleu, append_scores
+from helper import get_mean, get_bertscore_results, weighted_bleu_score, get_js_distance, load_empathy_classifier, load_emo_classifier, load_toxicity_classifier, emo_dis_bleu, append_scores
 from torch.utils.data import DataLoader
 
 # define which model to evaluate
 text_generation_model = "ppo_model" # blenderbot, ppo_model
-ppo_model = "./DEV_lr-9_ppl_toxic_w6-4-0-blenderbot-400m-emo-probi-ppl-last-score0.6292313380390405-ppl4.034670352935791"
+ppo_model = "./DEV_cont3_lr-10_emo_toxic_w6-4-0-emo-toxic-last-score0.632879662513733-ppl3.997105121612549"
 #"../DEV-mimic-lr-6-ppl-toxic-blenderbot-400m-emo-probi-ppl-last-score0.26038538995548793-ppl4.357065677642822"
 
 # set path prefix
-output_path_prefix = 'DEV_emo_toxic-w6-4-0_bert_test'
+output_path_prefix = 'DEV_cont3_emo_toxic-w6-4-0_bert_test'
 load_path_prefix = ''
 
 device = torch.cuda.current_device() if torch.cuda.is_available() else "cpu"
@@ -97,6 +97,7 @@ mean_bleu = 0
 emp_ratio = []
 BLEU_score_list = []
 list_generated_texts = []
+sent_bert_score = []
 
 # start evaluation
 #try:
@@ -126,6 +127,11 @@ with open(f'{output_path_prefix}_text_log_emo_probi_score.txt', 'w') as text_log
         #    text_log.write(f"{counter} decoding response... \n")
         generated_texts = tokenizer.batch_decode(outputs, skip_special_tokens=True)
         list_generated_texts.append(generated_texts[0])
+
+        # get sentence level bert score
+        sent_bert = bertscore.compute(predictions=generated_texts, references=[target], lang="en")
+        sent_bert_score.append(sent_bert)
+
         input_texts = input_texts.replace("_comma_", ",")
         text_log.write(f"{counter} Prompt: {input_texts} \n")
         print(f"{counter} Prompt: {input_texts}")
@@ -153,7 +159,7 @@ with open(f'{output_path_prefix}_text_log_emo_probi_score.txt', 'w') as text_log
     text_log.write(f"{counter} Mean Emo Score: {mean_emo_score}\n")
     #all_ref = prompts + targets_list
     print("Start calculating bertScore... ")
-    bertscore_results = bertscore.compute(predictions=list_generated_texts, references=targets_list, lang="en")
+    corpus_bertscore_results = bertscore.compute(predictions=list_generated_texts, references=targets_list, lang="en")
     #print(bertscore_results)
 
     for i in range(len(list_emo_score)):
@@ -195,12 +201,14 @@ with open(f'{output_path_prefix}_text_log_emo_probi_score.txt', 'w') as text_log
                 label2 = label_number[lab] / len(emp_results_labels)
     emp_ratio = [label0, label1, label2]
 
-    precision = bertscore_results["precision"]
-    recall = bertscore_results["recall"]
-    f1 = bertscore_results["f1"]
+    sent_bertscore_results = Dataset.from_list(sent_bert_score)
+    sent_precision, sent_recall, sent_f1 = get_bertscore_results(sent_bertscore_results)
+    corpus_precision, corpus_recall, corpus_f1 = get_bertscore_results(corpus_bertscore_results)
+
 
     text_log.write(f"{counter} Empathy Ratio: no empathy {emp_ratio[0]}, weak empathy {emp_ratio[1]}, strong empathy {emp_ratio[2]}.\n")
-    text_log.write(f"{counter} BertScore: precision {precision}, recall {recall}, f1 {f1}.\n")
+    text_log.write(f"{counter} Corpus BertScore: precision {corpus_precision}, recall {corpus_recall}, f1 {corpus_f1}.\n")
+    text_log.write(f"{counter} Sentence BertScore: precision {sent_precision}, recall {sent_recall}, f1 {sent_f1}.\n")
     text_log.write(f"Emp ratio: {emp_ratio}, score: {current_score}. \n")
 text_log.close()
 
@@ -208,12 +216,14 @@ with open(f'{output_path_prefix}_test_score_log_emo_probi_score.txt', 'w') as sc
     #score_log.write(f"Mean BLEU of this model: {mean_bleu}. \n")
     #score_log.write(f"Emo distribution similarity of this model: {emo_score}. \n")
     score_log.write(f"Empathy Ratio, no empathy: {emp_ratio[0]}, weak empathy {emp_ratio[1]}, strong empathy: {emp_ratio[2]}\n")
-    score_log.write(f"BertScore: precision {precision}, recall {recall}, f1 {f1}.\n")
+    score_log.write(f"Corpus BertScore: precision {corpus_precision}, recall {corpus_recall}, f1 {corpus_f1}.\n")
+    score_log.write(f"Sentence BertScore: precision {sent_precision}, recall {sent_recall}, f1 {sent_f1}.\n")
     score_log.write(f"Score of this model: {current_score}. \n")
     #print(f"Mean BLEU of this model: {mean_bleu}. \n")
     #print(f"Emo distribution similarity of this model: {emo_score}. \n")
     print(f"Empathy Ratio: no empathy {emp_ratio[0]}, weak empathy {emp_ratio[1]}, strong empathy {emp_ratio[2]}\n")
-    print(f"{counter} BertScore: precision {precision}, recall {recall}, f1 {f1}.\n")
+    print(f"Corpus BertScore: precision {corpus_precision}, recall {corpus_recall}, f1 {corpus_f1}.\n")
+    print(f"Sentence BertScore: precision {sent_precision}, recall {sent_recall}, f1 {sent_f1}.\n")
     print(f"Score of this model: {current_score}. \n")
 score_log.close()
 """
