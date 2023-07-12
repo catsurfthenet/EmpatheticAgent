@@ -16,12 +16,15 @@ from torch.utils.data import DataLoader
 
 # define which model to evaluate
 text_generation_model = "ppo_model" # blenderbot, ppo_model
+#change
 ppo_model = "./DEV_cont3_lr-10_emo_toxic_w6-4-0-emo-toxic-last-score0.632879662513733-ppl3.997105121612549"
+#"./DEV_cont3_lr-10_emo_toxic_w6-4-0-emo-toxic-last-score0.632879662513733-ppl3.997105121612549"
+#"../DEV_lr-9_ppl_toxic_w6-4-0-blenderbot-400m-emo-probi-ppl-last-score0.6292313380390405-ppl4.034670352935791"
 #"../DEV-mimic-lr-6-ppl-toxic-blenderbot-400m-emo-probi-ppl-last-score0.26038538995548793-ppl4.357065677642822"
 
 # set path prefix
 output_path_prefix = 'DEV_cont3_emo_toxic-w6-4-0_bert_test'
-load_path_prefix = ''
+load_path_prefix = '' # change
 
 device = torch.cuda.current_device() if torch.cuda.is_available() else "cpu"
 #device = "mps"
@@ -38,6 +41,7 @@ emp_classifier_model = f"{load_path_prefix}models/roberta-empathy-03-06-2023-18_
 empathy_model_id = emp_classifier_model
 empathy_tokenizer = RobertaTokenizerFast.from_pretrained('roberta-base')
 empathy_model = RobertaForSequenceClassification.from_pretrained(empathy_model_id, torch_dtype=torch.float32).to(device)
+# change
 #empathy_classifier = pipeline('text-classification', model=empathy_model, tokenizer=empathy_tokenizer, max_length=512, truncation=True)
 empathy_classifier = pipeline('text-classification', model=empathy_model, tokenizer=empathy_tokenizer, max_length=512, truncation=True, device=0)
 
@@ -202,9 +206,11 @@ with open(f'{output_path_prefix}_text_log_emo_probi_score.txt', 'w') as text_log
     emp_ratio = [label0, label1, label2]
 
     sent_bertscore_results = Dataset.from_list(sent_bert_score)
+    sent_bertscore_results = {"precision": [x for [x] in sent_bertscore_results["precision"]],
+                              "recall": [x for [x] in sent_bertscore_results["recall"]],
+                              "f1": [x for [x] in sent_bertscore_results["f1"]]}
     sent_precision, sent_recall, sent_f1 = get_bertscore_results(sent_bertscore_results)
     corpus_precision, corpus_recall, corpus_f1 = get_bertscore_results(corpus_bertscore_results)
-
 
     text_log.write(f"{counter} Empathy Ratio: no empathy {emp_ratio[0]}, weak empathy {emp_ratio[1]}, strong empathy {emp_ratio[2]}.\n")
     text_log.write(f"{counter} Corpus BertScore: precision {corpus_precision}, recall {corpus_recall}, f1 {corpus_f1}.\n")
