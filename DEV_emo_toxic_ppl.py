@@ -289,10 +289,15 @@ with open(f'{save_path_prefix}_score_train_output.txt', 'w') as f:
         #loss = criterion()
         ppl = torch.exp(loss).cpu().detach().numpy()
         ppl = min(ppl, 1000) # clip perplexity to within 1000
+        # rescale perplexity to between 1 and 1000
+        # the experimental lowest value is around 4
+        if ppl < 5:
+            ppl = 1
+        else:
+            ppl - 4
         inverse_ppl = 1 / ppl # inverse perplexity
         #ppl_time = time.time()
         #print(f"Get ppl in {ppl_time - decode_resp}")
-
         score_list = []
 
         if counter % 100 == 0:
