@@ -42,9 +42,8 @@ from nltk.tokenize import word_tokenize
 #from classifiers import get_sentence_score
 from scipy.spatial import distance
 from scipy.special import softmax
-from helper import weighted_bleu_score, get_js_distance, emo_dis_ppl, emo_dis_ppl_toxic, load_toxicity_classifier, load_empathy_classifier, load_emo_classifier, emo_dis_bleu, append_scores
+from helper import get_mean, weighted_bleu_score, get_js_distance, emo_dis_ppl, emo_dis_ppl_toxic, load_toxicity_classifier, load_empathy_classifier, load_emo_classifier, emo_dis_bleu, append_scores
 #from torch.utils.data import DataLoader
-
 tqdm.pandas()
 
 ########################################################################
@@ -65,17 +64,17 @@ tqdm.pandas()
 ########################################################################
 
 # define path and variables
-save_path_prefix = "DEV_SGD_lr-9_emo_toxic_w6-4-0" #"DEV_lr-10_emo_toxic_w5-3-2_share6" #"DEV_lr-7_ppl_toxic_w4-6-0" #"DEV-mimic-lr-6-ppl-toxic"
+save_path_prefix = "DEV_SGD_lr-11_emo_toxic_w5-3-2" #"DEV_lr-7_ppl_toxic_w4-6-0" #"DEV-mimic-lr-6-ppl-toxic" # "DEV_SGD_lr-9_emo_toxic_w6-4-0"
 load_path_prefix = "./"
 ppo_model = f"{load_path_prefix}DEV_lr-9_ppl_toxic_w6-4-0-blenderbot-400m-emo-probi-ppl-last-score0.6292313380390405-ppl4.034670352935791"
 blenderbot = "facebook/blenderbot-400M-distill"
 model_path = blenderbot
 # define weights
-emp_weight = 0.6 #0
-toxicity_weight = 0.4
-fluency_weight = 0 #1
-lr = 1.47e-9
-ppo_epoch_num = 5
+emp_weight = 0.5 #0
+toxicity_weight = 0.3
+fluency_weight = 0.2 #1
+lr = 1.47e-11
+ppo_epoch_num = 10
 score_min = 100
 score_max = 0
 DEV = True
@@ -259,6 +258,7 @@ output_length_sampler = LengthSampler(output_min_length, output_max_length)
 model_save_path = script_args.model_save_path
 counter = 0
 best_score = 0
+mean_score_list = []
 #epoch_num = 0
 #init = time.time()
 with open(f'{save_path_prefix}_score_train_output.txt', 'w') as f:
@@ -291,10 +291,7 @@ with open(f'{save_path_prefix}_score_train_output.txt', 'w') as f:
         ppl = min(ppl, 1000) # clip perplexity to within 1000
         # rescale perplexity to between 1 and 1000
         # the experimental lowest value is around 4
-        if ppl < 5:
-            ppl = 1
-        else:
-            ppl - 4
+        ppl = 1 if (ppl < 5) else (ppl - 4)
         inverse_ppl = 1 / ppl # inverse perplexity
         #ppl_time = time.time()
         #print(f"Get ppl in {ppl_time - decode_resp}")
@@ -338,6 +335,8 @@ with open(f'{save_path_prefix}_score_train_output.txt', 'w') as f:
             score_min = min(score_list)
         print(f"Score min: {score_min}, score max: {score_max} \n")
         #print(f"Score list: {score_list} \n")
+        mean_score = get_mean(score_list)
+        mean_score_list.append(mean_score)
         score_list = logit(score_list)
         rewards = [torch.tensor(output) for output in score_list] # change reward
         #end_get_result = time.time()
@@ -477,5 +476,7 @@ with open(f'{save_path_prefix}_score_train_output.txt', 'w') as f:
         with open(f'{save_path_prefix}_error_log_emo_probi_score_last.txt', 'w') as err_log:
             err_log.write(f"Unexpected {err=}, {type(err)=}")
         err_log.close()
-
+    f3 = open(f"{save_path_prefix}_mean_score_list.p", 'wb')
+    pickle.dump([mean_score_list], f3)
+    f3.close()
 f.close()
