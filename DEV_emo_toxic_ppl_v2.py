@@ -43,7 +43,7 @@ from nltk.tokenize import word_tokenize
 from scipy.spatial import distance
 from scipy.special import softmax
 from helper import get_mean, weighted_bleu_score, get_js_distance, emo_count_ppl_toxic, emo_dis_ppl, emo_dis_ppl_toxic, load_toxicity_classifier, load_empathy_classifier, load_emo_classifier, emo_dis_bleu, append_scores
-#from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader
 tqdm.pandas()
 
 ########################################################################
@@ -62,12 +62,16 @@ tqdm.pandas()
 # configuration with `accelerate config`
 #
 ########################################################################
-
+"""ED: empathetic dialogues, RT: real toxic"""
 # define path and variables
-save_path_prefix = "DEV_Adam_lr-6_gamma0.8_emo_count_toxic_w1-0-0" #"DEV_lr-7_ppl_toxic_w4-6-0" #"DEV-mimic-lr-6-ppl-toxic" # "DEV_SGD_lr-9_emo_toxic_w6-4-0"
+input_batch_size = 24
+optimiser_choice = "Adam"
+save_path_prefix = f"test_dataloader_debug_dialogpt_ED_{optimiser_choice}_bs{input_batch_size}_lr-6_gamma0.99_emo_probi_w1-0-0" #"DEV_lr-7_ppl_toxic_w4-6-0" #"DEV-mimic-lr-6-ppl-toxic" # "DEV_SGD_lr-9_emo_toxic_w6-4-0"
 load_path_prefix = "./"
 ppo_model = f"{load_path_prefix}DEV_lr-9_ppl_toxic_w6-4-0-blenderbot-400m-emo-probi-ppl-last-score0.6292313380390405-ppl4.034670352935791"
 blenderbot = "facebook/blenderbot-400M-distill"
+dialogpt = "microsoft/DialoGPT-medium"
+opt_iml = "facebook/opt-iml-1.3b"
 model_path = blenderbot
 # define weights
 emp_weight = 1 #0
@@ -78,9 +82,10 @@ weight_decay = 0.001
 ppo_epoch_num = 10
 score_min = 100
 score_max = 0
-DEV = False
-dev_set_size = 800
-checkpoint = 1000
+DEV = True
+train_set_size = 500 #3000
+dev_set_size = 10 #800
+checkpoint = 10 #1000
 
 device = torch.cuda.current_device() if torch.cuda.is_available() else "cpu"
 # We first define the configuration of the experiment, defining the model, the dataset,
@@ -99,7 +104,7 @@ class ScriptArguments:
     log_with: Optional[str] = field(default=None, metadata={"help": "use 'wandb' to log with wandb"})
     learning_rate: Optional[float] = field(default=(lr) * 2, metadata={"help": "the learning rate"})
     mini_batch_size: Optional[int] = field(default=4, metadata={"help": "the PPO minibatch size"})
-    batch_size: Optional[int] = field(default=16, metadata={"help": "the batch size"})
+    batch_size: Optional[int] = field(default=input_batch_size, metadata={"help": "the batch size"})
     gradient_accumulation_steps: Optional[int] = field(
         default=1, metadata={"help": "the number of gradient accumulation steps"}
     )
@@ -118,7 +123,7 @@ script_args = parser.parse_args_into_dataclasses()[0]
 
 config = PPOConfig(
     model_name=script_args.model_name,
-    steps=20000, # NO: 10k (more neg on all tests)
+    steps=10000, # NO: 10k (more neg on all tests)
     learning_rate=script_args.learning_rate,
     adap_kl_ctrl=True,
     #init_kl_coef=0.4, # NO: 0.05
@@ -131,7 +136,7 @@ config = PPOConfig(
     log_with=script_args.log_with,
     ppo_epochs=ppo_epoch_num,
     mini_batch_size=script_args.mini_batch_size,
-    batch_size=8,#script_args.batch_size,
+    batch_size=script_args.batch_size,
     gradient_accumulation_steps=script_args.gradient_accumulation_steps,
     compare_steps=1,
 )
@@ -172,7 +177,7 @@ def build_dataset(
         continuation = sample["target"] # utterance
 
         sample["input_ids"] = tokenizer.encode(prompt)[: input_size()]
-        #sample["input_ids"] += [0] * max((128 - len(sample["input_ids"])), 0)
+        sample["input_ids"] += [0] * max((128 - len(sample["input_ids"])), 0)
         #sample["target_ids"] = tokenizer.encode(continuation)[: input_size()]
         sample["query"] = {"prompt": tokenizer.decode(sample["input_ids"]), "target": continuation}
         return sample
@@ -189,9 +194,9 @@ def build_dataset(
 # We retrieve the dataloader by calling the `build_dataset` function.
 min_input_length = 30
 max_input_length = 100
-dataset = build_dataset(config, dataset_path='modeldata/train_real_toxicity_dataset.p', input_min_text_length=min_input_length, input_max_text_length=max_input_length, size=1500)
+dataset = build_dataset(config, dataset_path='modeldata/emo_count_train_dialogue_dataset.p', input_min_text_length=min_input_length, input_max_text_length=max_input_length, size=train_set_size)
 dev_dataset = build_dataset(config, dataset_path='modeldata/dev_dialogue_dataset.p', input_min_text_length=min_input_length, input_max_text_length=max_input_length, size=dev_set_size)
-#dev_dataloader = DataLoader(dev_dataset, batch_size=8, shuffle=False)
+dev_dataloader = DataLoader(dev_dataset, batch_size=8, shuffle=False)
 
 def collator(data):
     return dict((key, [d[key] for d in data]) for key in data[0])
@@ -203,16 +208,24 @@ set_seed(config.seed)
 # Now let's build the model, the reference model, and the tokenizer. We first load the model
 # in bfloat16 to save memory using `transformers`.
 model = AutoModelForSeq2SeqLM.from_pretrained(config.model_name, torch_dtype=torch.float32)
+#model = AutoModelForCausalLM.from_pretrained(config.model_name, torch_dtype=torch.float32)
 
 # Pass the loaded model to `AutoModelForSeq2SeqLMWithValueHead`.
 model = AutoModelForSeq2SeqLMWithValueHead.from_pretrained(model)
+#model = AutoModelForCausalLMWithValueHead.from_pretrained(model)
 
 #ref_model = create_reference_model(model)
 
 # We make sure to use `Adam` optimizer on the model parameters that require gradients.
 #criterion = torch.nn.CrossEntropyLoss()
-optimizer = Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=config.learning_rate)
-#optimizer = AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=config.learning_rate, weight_decay=weight_decay)
+if optimiser_choice == "AdamW":
+    optimizer = AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=config.learning_rate,
+                      weight_decay=weight_decay)
+elif optimiser_choice == "SGD":
+    optimizer = SGD(filter(lambda p: p.requires_grad, model.parameters()), lr=config.learning_rate)
+else: # use Adam as default
+    optimizer = Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=config.learning_rate)
+#
 
 # only for this model.
 tokenizer = AutoTokenizer.from_pretrained(config.model_name)
@@ -227,7 +240,7 @@ ppo_trainer = PPOTrainer(
     dataset=dataset,
     data_collator=collator,
     optimizer=optimizer,
-    num_shared_layers=4, # total number of layers 11
+    num_shared_layers=2, # total number of layers 11
 )
 
 # We then build the reward pipeline, we will use the emotion classification model to compute the reward.
@@ -298,7 +311,7 @@ with open(f'{save_path_prefix}_score_train_output.txt', 'w') as f:
         texts = batch["response"]
         prompts = [q.get("prompt").replace("</s>", "").replace("_comma_", ",") for q in batch["query"]]
         response_tensors_t = torch.stack(response_tensors)
-        loss = model(input_ids=response_tensors_t, labels=response_tensors_t)[1] # get loss
+        loss = ppo_trainer.model(input_ids=response_tensors_t, labels=response_tensors_t)[1] # get loss
         #loss = criterion()
         ppl = torch.exp(loss).cpu().detach().numpy()
         mean_ppl_list.append(ppl)
@@ -362,9 +375,9 @@ with open(f'{save_path_prefix}_score_train_output.txt', 'w') as f:
         #print(f"Convert score to logit and tensor in {end_get_result - end_get_score}")
 
         # Run PPO step
-        stats = ppo_trainer.step(query_tensors, response_tensors, rewards)
-        ppo_trainer.log_stats(stats, batch, rewards)
-        #end_ppo_step = time.time()
+        #stats = ppo_trainer.step(query_tensors, response_tensors, rewards) #TODO
+        #ppo_trainer.log_stats(stats, batch, rewards)
+        end_ppo_step = time.time()
         #print(f"PPO steps in {end_ppo_step - end_get_result}")
 
         if counter % 100 == 0:
@@ -375,64 +388,78 @@ with open(f'{save_path_prefix}_score_train_output.txt', 'w') as f:
         # Save model every 200 epochs if model has improved in performance
         if epoch % checkpoint == 0 and DEV:
             # validate
-            try:
-                print(f"Start validation for epoch {epoch} with counter {counter}.")
-                BLEU_score_list = []
-                prompts = []
-                texts = []
-                ppl_list = []
+            #try:
+            print(f"Start validation for epoch {epoch} with counter {counter}.")
+            BLEU_score_list = []
+            prompts = []
+            texts = []
+            ppl_list = []
 
-                for dev_query in dev_dataset:
-                #for dev_batch in next(iter(dev_dataloader)):
-                    input_texts = dev_query["prompt"]
-                    prompts.append(input_texts)
-                    dev_input_ids = dev_query["input_ids"].to(ppo_trainer.accelerator.device)
-                    gen_len = output_length_sampler()
-                    generation_kwargs["max_new_tokens"] = gen_len
-                    outputs = ppo_trainer.generate(dev_input_ids, do_sample=True, max_new_tokens=40, use_cache=True)
-                    loss = model(input_ids=outputs, labels=outputs)[1]
-                    ppl = torch.exp(loss).cpu().detach().numpy()
-                    ppl_list.append(ppl)
-                    inverse_ppl = 1 / ppl
-                    dev_response = tokenizer.batch_decode(outputs, skip_special_tokens=True)
-                    texts.append(dev_response[0])
-                    """
-                    dev_response = word_tokenize(dev_response[0])
-                    dev_target = word_tokenize(dev_query["target"])
-                    dev_BLEUscore = weighted_bleu_score(dev_target, dev_response)
-                    BLEU_score_list.append(dev_BLEUscore)
-                    """
-                #dev_end_resp_gen = time.time()
-                #print(f"Dev response generation time {dev_end_resp_gen - end_ppo_step}")
-                #mean_bleu = sum(BLEU_score_list) / len(BLEU_score_list)
-                mean_ppl = sum(ppl_list) / len(ppl_list)
-                # calculate emo distribution
-                prompt_results = reward_classifier(prompts)
-                emo_results = reward_classifier(texts)
-                list_current_score, list_emo_score, mean_emo_score = emo_dis_ppl(prompt_results, emo_results, inverse_ppl, weights=[emp_weight, fluency_weight])
-                #dev_end_score = time.time()
-                #print(f"Dev get score in {dev_end_score - dev_end_resp_gen}")
+            start_dev_gen = time.time()
+            #for dev_query in dev_dataset:
+            for dev_batch in enumerate(dev_dataloader):
+                dev_query = dev_batch[1]
+                input_texts = dev_query["prompt"]
+                prompts += input_texts
+                #input_ids = tokenizer(input_texts, return_tensors="pt", padding='max_length', max_length=128,
+                #                      truncation=True).to(ppo_trainer.accelerator.device)
+                input_ids = dev_query["input_ids"].to(ppo_trainer.accelerator.device)#input_ids["input_ids"]
+                outputs = ppo_trainer.model.generate(input_ids, do_sample=True, num_beams=10, max_new_tokens=40, use_cache=True)
 
-                # current_score = mean((emo_score * emp_weight) + (bleu * fluency_weight))
-                current_score = sum(list_current_score) / len(list_current_score)
+                #print("Generated output")
+                """
+                dev_input_ids = dev_query["input_ids"].to(device)#to(ppo_trainer.accelerator.device)
+                input_shape = dev_input_ids.size()
+                #dev_input_ids = tokenizer(input_texts, return_tensors="pt", padding='max_length', max_length=128, truncation=True).to(device)
+                gen_len = output_length_sampler()
+                generation_kwargs["max_new_tokens"] = gen_len
+                outputs = ppo_trainer.generate(dev_input_ids, do_sample=True, num_beams=10, max_new_tokens=40, use_cache=True)
+                """
+                loss = model(input_ids=outputs, labels=outputs)[1]
+                ppl = torch.exp(loss).cpu().detach().numpy()
+                ppl_list.append(ppl)
+                inverse_ppl = 1 / ppl
+                dev_response = tokenizer.batch_decode(outputs, skip_special_tokens=True)
+                texts += dev_response
+                """
+                dev_response = word_tokenize(dev_response[0])
+                dev_target = word_tokenize(dev_query["target"])
+                dev_BLEUscore = weighted_bleu_score(dev_target, dev_response)
+                BLEU_score_list.append(dev_BLEUscore)
+                """
+            end_dev_gen = time.time()
+            print(f"Validation generation time {end_dev_gen - start_dev_gen}")
+            mean_ppl = get_mean(ppl_list)
+            # calculate emo distribution
+            prompt_results = reward_classifier(prompts)
+            emo_results = reward_classifier(texts)
+            toxicity_results = toxicity_classifier(texts)
+            list_current_score, list_emo_score, mean_emo_score, mean_toxic_score = emo_count_ppl_toxic(prompt_results, emo_results, inverse_ppl, toxicity_results, weights=[emp_weight, toxicity_weight, fluency_weight])
 
-                if current_score > best_score:
-                    best_score = current_score
-                    print(f"\nSaving model at epoch {epoch}. \n")
-                    if ppo_trainer.accelerator.is_main_process:
-                        ppo_trainer.save_pretrained(f"{model_save_path}-epoch{epoch}-score{np.float32(current_score)}-ppl{np.float32(mean_ppl)}")
-                    f.write(f"\nSaving model at epoch {epoch}. \n")
-                    f.write(f"Mean perplexity of this epoch: {mean_ppl}. \n")
-                    f.write(f"Mean JS distance of this epoch: {mean_emo_score} \n")
-                    f.write(f"Score of this epoch: {current_score}. \n")
-                    #dev_save_resp = time.time()
-                    #print(f"Dev save response in {dev_save_resp - dev_end_score}")
+            dev_end_score = time.time()
+            print(f"Validation score calculation time {dev_end_score - end_dev_gen}")
+            # current_score = mean((emo_score * emp_weight) + (bleu * fluency_weight))
+            current_score = sum(list_current_score) / len(list_current_score)
+            if current_score > best_score:
+                best_score = current_score
+                print(f"\nSaving model at epoch {epoch}. \n")
+                if ppo_trainer.accelerator.is_main_process:
+                    ppo_trainer.save_pretrained(f"{model_save_path}-epoch{epoch}-score{np.float32(current_score)}-ppl{np.float32(mean_ppl)}")
+                f.write(f"\nSaving model at epoch {epoch}. \n")
+                f.write(f"Mean Perplexity of this epoch: {mean_ppl}. \n")
+                f.write(f"Mean Emo Count Probi of this epoch: {mean_emo_score}. \n")
+                f.write(f"Mean Toxicity Score of this epoch: {mean_toxic_score}. \n")
+                f.write(f"Score of this epoch: {current_score}. \n")
+                dev_save_resp = time.time()
+                print(f"Dev save response in {dev_save_resp - dev_end_score}")
+            """
             except Exception as err:
                 with open(f'{save_path_prefix}_error_log_empathy_score_epoch{epoch}.txt', 'w') as err_log:
                     err_log.write(f"Unexpected {err=}, {type(err)=}")
                 err_log.close()
-            #end_dev = time.time()
-            #print(f"Validation in {end_dev - end_ppo_step}")
+            """
+            end_dev = time.time()
+            print(f"Validation in {end_dev - end_ppo_step}")
 
     # validate at very last ?
     if DEV:
@@ -442,19 +469,21 @@ with open(f'{save_path_prefix}_score_train_output.txt', 'w') as f:
             prompts = []
             texts = []
             ppl_list = []
-            for dev_query in dev_dataset:
+            for dev_batch in enumerate(dev_dataloader):
+            #for dev_query in dev_dataset:
+                dev_query = dev_batch[1]
                 input_texts = dev_query["prompt"]
-                prompts.append(input_texts)
-                dev_input_ids = dev_query["input_ids"].to(ppo_trainer.accelerator.device)
-                gen_len = output_length_sampler()
-                generation_kwargs["max_new_tokens"] = gen_len
-                outputs = ppo_trainer.generate(dev_input_ids, do_sample=True, max_new_tokens=40, use_cache=True)
+                prompts += input_texts
+                input_ids = dev_query["input_ids"].to(ppo_trainer.accelerator.device)
+                #gen_len = output_length_sampler()
+                #generation_kwargs["max_new_tokens"] = gen_len
+                outputs = ppo_trainer.model.generate(input_ids, do_sample=True, max_new_tokens=40, use_cache=True)
                 loss = model(input_ids=outputs, labels=outputs)[1]
                 ppl = torch.exp(loss).cpu().detach().numpy()
                 ppl_list.append(ppl)
                 inverse_ppl = 1 / ppl
                 dev_response = tokenizer.batch_decode(outputs, skip_special_tokens=True)
-                texts.append(dev_response[0])
+                texts += dev_response
                 """
                 dev_response = word_tokenize(dev_response[0])
                 dev_target = word_tokenize(dev_query["target"])
@@ -472,7 +501,7 @@ with open(f'{save_path_prefix}_score_train_output.txt', 'w') as f:
             if toxicity_weight > 0:
                 toxicity_results = toxicity_classifier(texts)
             print("Got results for toxicity ")
-            list_current_score, list_emo_score, mean_emo_score = emo_dis_ppl_toxic(prompt_results, emo_results, inverse_ppl, toxicity_results, weights=[emp_weight, toxicity_weight, fluency_weight])
+            list_current_score, list_emo_score, mean_emo_score, mean_toxic_score = emo_count_ppl_toxic(prompt_results, emo_results, inverse_ppl, toxicity_results, weights=[emp_weight, toxicity_weight, fluency_weight])
             print("Update min and max score... ")
             if max(list_current_score) > score_max:
                 score_max = max(list_current_score)
