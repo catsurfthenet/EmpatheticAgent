@@ -11,20 +11,21 @@ import nltk
 from nltk.tokenize import word_tokenize
 from scipy.spatial import distance
 from scipy.special import softmax, logit
-from helper import get_mean, get_bertscore_results, weighted_bleu_score, get_js_distance, load_empathy_classifier, load_emo_classifier, load_toxicity_classifier, emo_dis_bleu, append_scores
+from helper import get_mean, get_bertscore_results, get_bertscore_results_batch, weighted_bleu_score, get_js_distance, load_empathy_classifier, load_emo_classifier, load_toxicity_classifier, emo_dis_bleu, append_scores
 from torch.utils.data import DataLoader
+from promcse import PromCSE
 
 # define which model to evaluate
-text_generation_model = "ppo_model" # blenderbot, ppo_model
 #change
-ppo_model = "./DEV_cont3_lr-10_emo_toxic_w6-4-0-emo-toxic-last-score0.632879662513733-ppl3.997105121612549"
+ppo_model = "../DEV_lr-9_ppl_toxic_w6-4-0-blenderbot-400m-emo-probi-ppl-last-score0.6292313380390405-ppl4.034670352935791"
 #"./DEV_cont3_lr-10_emo_toxic_w6-4-0-emo-toxic-last-score0.632879662513733-ppl3.997105121612549"
 #"../DEV_lr-9_ppl_toxic_w6-4-0-blenderbot-400m-emo-probi-ppl-last-score0.6292313380390405-ppl4.034670352935791"
 #"../DEV-mimic-lr-6-ppl-toxic-blenderbot-400m-emo-probi-ppl-last-score0.26038538995548793-ppl4.357065677642822"
+text_generation_model = "ppo" # blenderbot, ppo_model, dialogpt, opt_iml
 
 # set path prefix
-output_path_prefix = 'DEV_cont3_emo_toxic-w6-4-0_bert_test'
-load_path_prefix = '' # change
+output_path_prefix = f"{text_generation_model}_bert_test" #'DEV_cont3_emo_toxic-w6-4-0_bert_test'
+load_path_prefix = '../' # change
 
 device = torch.cuda.current_device() if torch.cuda.is_available() else "cpu"
 #device = "mps"
@@ -42,8 +43,8 @@ empathy_model_id = emp_classifier_model
 empathy_tokenizer = RobertaTokenizerFast.from_pretrained('roberta-base')
 empathy_model = RobertaForSequenceClassification.from_pretrained(empathy_model_id, torch_dtype=torch.float32).to(device)
 # change
-#empathy_classifier = pipeline('text-classification', model=empathy_model, tokenizer=empathy_tokenizer, max_length=512, truncation=True)
-empathy_classifier = pipeline('text-classification', model=empathy_model, tokenizer=empathy_tokenizer, max_length=512, truncation=True, device=0)
+empathy_classifier = pipeline('text-classification', model=empathy_model, tokenizer=empathy_tokenizer, max_length=512, truncation=True)
+#empathy_classifier = pipeline('text-classification', model=empathy_model, tokenizer=empathy_tokenizer, max_length=512, truncation=True, device=0)
 
 """
 if(os.path.exists(f'{load_path_prefix}modeldata/emo_probi.p')):
@@ -57,9 +58,16 @@ all_emo_probi = dict(all_emo_probi)
 # load BertSCORE
 bertscore = load("bertscore")
 
+
+promcse_model = PromCSE("YuxinJiang/unsup-promcse-bert-base-uncased", "cls_before_pooler", 16)
+
 # get trained model to be evaluated
-if text_generation_model == "opt-iml-1.3b":
+if text_generation_model == "opt_iml":
     pretrained_model = "facebook/opt-iml-1.3b"
+    model_id = pretrained_model
+    model = AutoModelForCausalLM.from_pretrained(model_id, device_map={"": device}, torch_dtype=torch.float32).to(device)
+elif text_generation_model == "dialogpt":
+    pretrained_model = "microsoft/DialoGPT-small"
     model_id = pretrained_model
     model = AutoModelForCausalLM.from_pretrained(model_id, device_map={"": device}, torch_dtype=torch.float32).to(device)
 elif text_generation_model == "ppo_model":
@@ -77,9 +85,9 @@ tokenizer.padding_side = "left"
 with open(f"{load_path_prefix}modeldata/test_dialogue_dataset.p", "rb") as f:
     [test_dataset] = pickle.load(f)
 #test_dataset = Dataset.from_dict(test_dataset)[:10]
-test_dataset = Dataset.from_dict(test_dataset).shuffle(seed=2023).select(range(1000))
+test_dataset = Dataset.from_dict(test_dataset).shuffle(seed=2023).select(range(16))
 #test_dataset = Dataset.from_dict(test_dataset)
-#test_dataloader = DataLoader(test_dataset, batch_size=8, shuffle=False)
+test_dataloader = DataLoader(test_dataset, batch_size=8, shuffle=False)
 
 # preprocessing
 def tokenize(sample):
@@ -102,6 +110,7 @@ emp_ratio = []
 BLEU_score_list = []
 list_generated_texts = []
 sent_bert_score = []
+promcse_similarities = []
 
 # start evaluation
 #try:
@@ -111,36 +120,43 @@ with open(f'{output_path_prefix}_text_log_emo_probi_score.txt', 'w') as text_log
     targets_list = []
     #query_list = []
     score_list = []
-    for test_query in test_dataset:
-    #for test_batch in next(iter(test_dataloader)):
+    #for test_query in test_dataset:
+    for test_batch in enumerate(test_dataloader):
+        test_query = test_batch[1]
         input_texts = test_query["prompt"]
-        prompts.append(input_texts.replace("</s>", "").replace("_comma_", ","))
+        prompts = prompts + [it.replace("</s>", "").replace("_comma_", ",") for it in input_texts]
         #query_list.append(test_query["query"])
-        target = test_query["query"]["target"]
-        targets_list.append(target.replace("</s>", "").replace("_comma_", ","))
+        target = test_query["target"]
+        targets_list = targets_list + [t.replace("</s>", "").replace("_comma_", ",") for t in target]
         #print(target)
         #if counter > 590:
         #    text_log.write(f"{counter} tokenizing... \n")
         input_ids = tokenizer(input_texts, return_tensors="pt", padding='max_length', max_length=128, truncation=True).to(device)
-        #input_ids = test_query['input_ids']
-        #if counter > 590:
-        #    text_log.write(f"{counter} generating response... \n")
-        outputs = model.generate(**input_ids, do_sample=True, num_beams=3, max_new_tokens=40, use_cache=True)
+        input_ids = input_ids["input_ids"]
+        #input_shape = input_ids.size()
+        outputs = model.generate(input_ids, do_sample=True, num_beams=10, max_new_tokens=40, use_cache=True)
         #outputs = model.generate(**input_ids, num_beams=5, do_sample=True, max_new_tokens=40, use_cache=True, num_return_sequences=1)
         #if counter > 590:
         #    text_log.write(f"{counter} decoding response... \n")
         generated_texts = tokenizer.batch_decode(outputs, skip_special_tokens=True)
-        list_generated_texts.append(generated_texts[0])
+        list_generated_texts = list_generated_texts + generated_texts
 
         # get sentence level bert score
-        sent_bert = bertscore.compute(predictions=generated_texts, references=[target], lang="en")
+        sent_bert = bertscore.compute(predictions=generated_texts, references=targets_list, lang="en")
         sent_bert_score.append(sent_bert)
 
-        input_texts = input_texts.replace("_comma_", ",")
+        similarities = promcse_model.similarity(generated_texts, targets_list)
+        similarities = [similarities[i][i] for i in range(len(generated_texts))]
+        promcse_similarities = promcse_similarities + similarities
+
+        # TODO do negative sampling as comparison
+
+
+        input_texts = [it.replace("_comma_", ",") for it in input_texts]
         text_log.write(f"{counter} Prompt: {input_texts} \n")
         print(f"{counter} Prompt: {input_texts}")
-        text_log.write(f"{counter} Response: {generated_texts[0]} \n")
-        print(f"{counter} Response: {generated_texts[0]}")
+        text_log.write(f"{counter} Response: {list_generated_texts} \n")
+        print(f"{counter} Response: {list_generated_texts}")
         text_log.write(f"{counter} Ref: {target} \n \n")
         print(f"{counter} Ref: {target}\n")
         counter += 1
@@ -206,10 +222,10 @@ with open(f'{output_path_prefix}_text_log_emo_probi_score.txt', 'w') as text_log
     emp_ratio = [label0, label1, label2]
 
     sent_bertscore_results = Dataset.from_list(sent_bert_score)
-    sent_bertscore_results = {"precision": [x for [x] in sent_bertscore_results["precision"]],
-                              "recall": [x for [x] in sent_bertscore_results["recall"]],
-                              "f1": [x for [x] in sent_bertscore_results["f1"]]}
-    sent_precision, sent_recall, sent_f1 = get_bertscore_results(sent_bertscore_results)
+    #sent_bertscore_results = {"precision": [x for [x] in sent_bertscore_results["precision"]],
+    #                      "recall": [x for [x] in sent_bertscore_results["recall"]],
+    #                      "f1": [x for [x] in sent_bertscore_results["f1"]]}
+    sent_precision, sent_recall, sent_f1 = get_bertscore_results_batch(sent_bertscore_results)
     corpus_precision, corpus_recall, corpus_f1 = get_bertscore_results(corpus_bertscore_results)
 
     text_log.write(f"{counter} Empathy Ratio: no empathy {emp_ratio[0]}, weak empathy {emp_ratio[1]}, strong empathy {emp_ratio[2]}.\n")
