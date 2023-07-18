@@ -69,7 +69,7 @@ input_mini_batch_size = 4
 optimiser_choice = "Adam"
 reward_function = emo_dis_ppl_toxic
 train_dataset_path = "modeldata/input_resp_clean_prompt_emo_train_dialogue_dataset.p" # 'modeldata/emo_dis_train_dialogue_dataset.p' #
-save_path_prefix = f"full2_clean_emo_respxppl_ED_{optimiser_choice}_bs{input_batch_size}_lr-5_gamma0.99_emo_probi_w5-0-5" #"DEV_lr-7_ppl_toxic_w4-6-0" #"DEV-mimic-lr-6-ppl-toxic" # "DEV_SGD_lr-9_emo_toxic_w6-4-0"
+save_path_prefix = f"test5_clean_emo_respxppl_ED_{optimiser_choice}_bs{input_batch_size}_lr-5_gamma0.99_emo_probi_w5-0-5" #"DEV_lr-7_ppl_toxic_w4-6-0" #"DEV-mimic-lr-6-ppl-toxic" # "DEV_SGD_lr-9_emo_toxic_w6-4-0"
 load_path_prefix = "./"
 ppo_model = f"{load_path_prefix}DEV_lr-9_ppl_toxic_w6-4-0-blenderbot-400m-emo-probi-ppl-last-score0.6292313380390405-ppl4.034670352935791"
 blenderbot = "facebook/blenderbot-400M-distill"
@@ -81,7 +81,7 @@ emp_weight = 0.5 #0
 toxicity_weight = 0
 fluency_weight = 0.5 #1
 ref_gen_emo_match_reward = 2
-lr = 1.47e-7
+lr = 1.47e-5
 weight_decay = 0.001
 ppo_epoch_num = 5
 score_min = 100
@@ -91,7 +91,7 @@ train_set_size = 3000 #3000
 dev_set_size = 80
 checkpoint = 50
 epoch_num = 1
-reward_scale = 5
+reward_scale = 3
 
 device = torch.cuda.current_device() if torch.cuda.is_available() else "cpu"
 # We first define the configuration of the experiment, defining the model, the dataset,
@@ -106,7 +106,7 @@ class ScriptArguments:
     """
     # NOTE: gpt2 models use Conv1D instead of Linear layers which are not yet supported in 8 bit mode
     # models like gpt-neo* models are more suitable.
-    model_name: Optional[str] = field(default=model_path, metadata={"help": "the model name"})
+    model_name: Optional[str] = field(default="facebook/blenderbot-400M-distill", metadata={"help": "the model name"})
     log_with: Optional[str] = field(default=None, metadata={"help": "use 'wandb' to log with wandb"})
     learning_rate: Optional[float] = field(default=(lr) * 2, metadata={"help": "the learning rate"})
     mini_batch_size: Optional[int] = field(default=input_mini_batch_size, metadata={"help": "the PPO minibatch size"})
@@ -294,7 +294,7 @@ ppo_trainer = PPOTrainer(
     dataset=dataset,
     data_collator=collator,
     optimizer=optimizer,
-    num_shared_layers=2, # total number of layers 11
+    num_shared_layers=4, # total number of layers 11
 )
 
 # We then build the reward pipeline, we will use the emotion classification model to compute the reward.

@@ -1,3 +1,6 @@
+import os
+import pickle
+
 import nltk
 import torch
 from nltk.tokenize import word_tokenize
@@ -6,6 +9,106 @@ from scipy.special import softmax, logit
 import numpy as np
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline, RobertaForSequenceClassification, \
     RobertaTokenizerFast
+from datasets import Dataset
+from trl.core import LengthSampler
+
+
+def build_dataset(
+    config, dataset_path='modeldata/dialogue_dataset.p', input_min_text_length=5, input_max_text_length=100, size=-1
+):
+    """
+    Build dataset for training. This builds the dataset from `load_dataset`, one should
+    customize this function to train the model on its own dataset.
+
+    Args:
+        dataset_name (`str`):
+            The name of the dataset to be loaded.
+
+    Returns:
+        dataloader (`torch.utils.data.DataLoader`):
+            The dataloader for the dataset.
+    """
+    tokenizer = AutoTokenizer.from_pretrained(config.model_name)
+    tokenizer.pad_token = tokenizer.eos_token
+
+    #ds = load_dataset(dataset_name, split="train")
+    if (os.path.exists(dataset_path)):
+        print("LOADING empathetic_dialogue")
+        with open(dataset_path, "rb") as f:
+            [data] = pickle.load(f)
+    ds = Dataset.from_dict(data)
+
+    input_size = LengthSampler(input_min_text_length, input_max_text_length)
+
+    def tokenize(sample):
+        prompt = sample["prompt"] # prompt
+        continuation = sample["target"] # utterance
+        target_emotion = sample["target_emo"]
+
+        sample["input_ids"] = tokenizer.encode(prompt)[: input_size()]
+        sample["input_ids"] += [0] * max((128 - len(sample["input_ids"])), 0)
+        #sample["target_ids"] = tokenizer.encode(continuation)[: input_size()]
+        sample["query"] = {"prompt": tokenizer.decode(sample["input_ids"]),
+                           "target": continuation,
+                           "target_emo": target_emotion}
+        return sample
+
+    ds = ds.map(tokenize, batched=False)
+    ds.set_format(type="torch")
+
+    ds = ds.train_test_split(test_size=0.2, shuffle=False)["train"]
+    if size > -1:
+        ds = ds.shuffle(seed=2023).select(range(size))
+    return ds
+
+def build_train_dataset(
+    config, dataset_path='modeldata/dialogue_dataset.p', input_min_text_length=5, input_max_text_length=100, size=-1
+):
+    """
+    Build dataset for training. This builds the dataset from `load_dataset`, one should
+    customize this function to train the model on its own dataset.
+
+    Args:
+        dataset_name (`str`):
+            The name of the dataset to be loaded.
+
+    Returns:
+        dataloader (`torch.utils.data.DataLoader`):
+            The dataloader for the dataset.
+    """
+    tokenizer = AutoTokenizer.from_pretrained(config.model_name)
+    tokenizer.pad_token = tokenizer.eos_token
+
+    #ds = load_dataset(dataset_name, split="train")
+    if (os.path.exists(dataset_path)):
+        print("LOADING empathetic_dialogue")
+        with open(dataset_path, "rb") as f:
+            [data] = pickle.load(f)
+    ds = Dataset.from_dict(data)
+
+    input_size = LengthSampler(input_min_text_length, input_max_text_length)
+
+    def tokenize(sample):
+        prompt = sample["prompt"] # prompt
+        continuation = sample["target"] # utterance
+        target_emotion = sample["target_emo"]
+
+        sample["input_ids"] = tokenizer.encode(prompt)[: input_size()]
+        sample["input_ids"] += [0] * max((128 - len(sample["input_ids"])), 0)
+        #sample["target_ids"] = tokenizer.encode(continuation)[: input_size()]
+        sample["query"] = {"prompt": tokenizer.decode(sample["input_ids"]),
+                           "target": continuation,
+                           "target_emo": target_emotion}
+        return sample
+
+    ds = ds.map(tokenize, batched=False)
+    ds.set_format(type="torch")
+
+    ds = ds.train_test_split(test_size=0.2, shuffle=False)["train"]
+    if size > -1:
+        ds = ds.shuffle(seed=2023).select(range(size))
+    return ds
+
 
 def get_mean(scores):
     return (sum(scores) / len(scores))
@@ -16,6 +119,11 @@ def get_bertscore_results(bertscore_results):
     f1 = get_mean(bertscore_results["f1"])
     return precision, recall, f1
 
+def get_bertscore_results_batch(bertscore_results):
+    precision = get_mean([get_mean(b) for b in bertscore_results["precision"]])
+    recall = get_mean([get_mean(b) for b in bertscore_results["recall"]])
+    f1 = get_mean([get_mean(b) for b in bertscore_results["f1"]])
+    return precision, recall, f1
 def load_emo_classifier(device):
     emo_model_id = "SamLowe/roberta-base-go_emotions"
     emo_tokenizer = AutoTokenizer.from_pretrained(emo_model_id)
@@ -174,6 +282,36 @@ def emo_count_ppl_toxic(prompt_results, emo_results, inverse_perplexity, toxicit
     mean_toxic_score = get_mean(toxicity_score)
     return score_list, list_emo_score, mean_emo_score, mean_toxic_score
 
+def emo_count_ppl_ref_emo(prompt_results, emo_results, inverse_perplexity, toxicity, weights=[0.4, 0.4, 0.2]):
+    emo_weight = weights[0]
+    toxicity_weight = weights[1]
+    fluency_weight = weights[2]
+    score_list = []
+    weighted_ppl = inverse_perplexity * fluency_weight
+    list_emo_score = [0] * len(prompt_results)
+    mean_emo_score, mean_toxic_score = 0, 0
+    toxicity_score = []
+    if emo_weight > 0:
+        list_emo_score, mean_emo_score = get_emo_counts(prompt_results, emo_results)
+
+    for i in range(len(list_emo_score)):
+        if toxicity_weight > 0:
+            if toxicity[i]["label"] == "toxic":
+                toxic_score = 1e-10
+            else:
+                toxic_score = toxicity[i]["score"]
+        else:
+            toxic_score = 1e-10
+        toxicity_score.append(toxic_score)
+        emp_score = list_emo_score[i]
+        # better response higher score
+        temp_score = (emp_score * emo_weight) + (weighted_ppl) + (toxicity_weight * toxic_score)
+        score_list.append(np.float32(temp_score))
+
+    mean_toxic_score = get_mean(toxicity_score)
+    return score_list, list_emo_score, mean_emo_score, mean_toxic_score
+
+
 def emo_dis_ppl(prompt_results, emo_results, inverse_perplexity, weights=[0.2, 0.8]):
     emo_weight = weights[0]
     fluency_weight = weights[1]
@@ -191,6 +329,22 @@ def emo_dis_ppl(prompt_results, emo_results, inverse_perplexity, weights=[0.2, 0
 
     return score_list, list_emo_score, mean_emo_score
 
+def emo_count_ppl(prompt_results, emo_results, inverse_perplexity, weights=[0.2, 0.8]):
+    emo_weight = weights[0]
+    fluency_weight = weights[1]
+    score_list = []
+    weighted_ppl = inverse_perplexity * fluency_weight
+    list_emo_score = [0] * len(prompt_results)
+    if emo_weight > 0:
+        list_emo_score, mean_emo_score = get_js_distance(prompt_results, emo_results)
+
+    for i in range(len(list_emo_score)):
+        emp_score = list_emo_score[i]
+        # better response higher score
+        temp_score = (emp_score * emo_weight) + (weighted_ppl)
+        score_list.append(np.float32(temp_score))
+
+    return score_list, list_emo_score, mean_emo_score
 
 
 def emo_dis_bleu(batch_query, batch_response, prompt_results, emo_results, weights=[0.2, 0.8]):
