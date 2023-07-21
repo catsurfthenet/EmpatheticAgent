@@ -12,7 +12,9 @@ from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipe
 from datasets import Dataset
 from trl.core import LengthSampler
 
-
+# Below is an example function to build the dataset. In our case, we use the IMDB dataset
+# from the `datasets` library. One should customize this function to train the model on
+# its own dataset.
 def build_dataset(
     config, dataset_path='modeldata/dialogue_dataset.p', input_min_text_length=5, input_max_text_length=100, size=-1
 ):
@@ -43,14 +45,57 @@ def build_dataset(
     def tokenize(sample):
         prompt = sample["prompt"] # prompt
         continuation = sample["target"] # utterance
-        target_emotion = sample["target_emo"]
+
+        sample["input_ids"] = tokenizer.encode(prompt)[: input_size()]
+        #sample["input_ids"] += [0] * max((128 - len(sample["input_ids"])), 0)
+        #sample["target_ids"] = tokenizer.encode(continuation)[: input_size()]
+        sample["query"] = {"prompt": tokenizer.decode(sample["input_ids"]), "target": continuation}
+        return sample
+
+    ds = ds.map(tokenize, batched=False)
+    ds.set_format(type="torch")
+
+    ds = ds.train_test_split(test_size=0.2, shuffle=False)["train"]
+    if size > -1:
+        ds = ds.shuffle(seed=2023).select(range(size))
+    return ds
+
+def build_pad_dataset(
+    config, dataset_path='modeldata/dialogue_dataset.p', input_min_text_length=5, input_max_text_length=100, size=-1
+):
+    """
+    Build dataset for training. This builds the dataset from `load_dataset`, one should
+    customize this function to train the model on its own dataset.
+
+    Args:
+        dataset_name (`str`):
+            The name of the dataset to be loaded.
+
+    Returns:
+        dataloader (`torch.utils.data.DataLoader`):
+            The dataloader for the dataset.
+    """
+    tokenizer = AutoTokenizer.from_pretrained(config.model_name)
+    tokenizer.pad_token = tokenizer.eos_token
+
+    #ds = load_dataset(dataset_name, split="train")
+    if (os.path.exists(dataset_path)):
+        print("LOADING empathetic_dialogue")
+        with open(dataset_path, "rb") as f:
+            [data] = pickle.load(f)
+    ds = Dataset.from_dict(data)
+
+    input_size = LengthSampler(input_min_text_length, input_max_text_length)
+
+    def tokenize(sample):
+        prompt = sample["prompt"] # prompt
+        continuation = sample["target"] # utterance
 
         sample["input_ids"] = tokenizer.encode(prompt)[: input_size()]
         sample["input_ids"] += [0] * max((128 - len(sample["input_ids"])), 0)
         #sample["target_ids"] = tokenizer.encode(continuation)[: input_size()]
         sample["query"] = {"prompt": tokenizer.decode(sample["input_ids"]),
-                           "target": continuation,
-                           "target_emo": target_emotion}
+                           "target": continuation}
         return sample
 
     ds = ds.map(tokenize, batched=False)
@@ -94,7 +139,7 @@ def build_train_dataset(
         target_emotion = sample["target_emo"]
 
         sample["input_ids"] = tokenizer.encode(prompt)[: input_size()]
-        sample["input_ids"] += [0] * max((128 - len(sample["input_ids"])), 0)
+        #sample["input_ids"] += [0] * max((128 - len(sample["input_ids"])), 0)
         #sample["target_ids"] = tokenizer.encode(continuation)[: input_size()]
         sample["query"] = {"prompt": tokenizer.decode(sample["input_ids"]),
                            "target": continuation,

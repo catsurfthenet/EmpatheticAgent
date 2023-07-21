@@ -26,7 +26,7 @@ text_generation_model = "ppo" # blenderbot, ppo_model, dialogpt, opt_iml
 
 # set path prefix
 output_path_prefix = f"debug_{text_generation_model}_bert_test" #'DEV_cont3_emo_toxic-w6-4-0_bert_test'
-load_path_prefix = '' # change
+load_path_prefix = '../' # change
 
 device = torch.cuda.current_device() if torch.cuda.is_available() else "cpu"
 negative_sample_size = 8
@@ -46,8 +46,8 @@ empathy_model_id = emp_classifier_model
 empathy_tokenizer = RobertaTokenizerFast.from_pretrained('roberta-base')
 empathy_model = RobertaForSequenceClassification.from_pretrained(empathy_model_id, torch_dtype=torch.float32).to(device)
 # change
-#empathy_classifier = pipeline('text-classification', model=empathy_model, tokenizer=empathy_tokenizer, max_length=512, truncation=True)
-empathy_classifier = pipeline('text-classification', model=empathy_model, tokenizer=empathy_tokenizer, max_length=512, truncation=True, device=0)
+empathy_classifier = pipeline('text-classification', model=empathy_model, tokenizer=empathy_tokenizer, max_length=512, truncation=True)
+#empathy_classifier = pipeline('text-classification', model=empathy_model, tokenizer=empathy_tokenizer, max_length=512, truncation=True, device=0)
 
 """
 if(os.path.exists(f'{load_path_prefix}modeldata/emo_probi.p')):
@@ -124,7 +124,7 @@ neg_promcse_similarities = []
 #try:
 with open(f'{output_path_prefix}_text_log_emo_probi_score.txt', 'w') as text_log:
     if text_generation_model == "ppo":
-        text_log.write(f"PPO Model name: {ppo_model}")
+        text_log.write(f"PPO Model name: {ppo_model} \n")
     counter = 0
     prompts = []
     targets_list = []
