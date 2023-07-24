@@ -11,6 +11,7 @@ from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipe
     RobertaTokenizerFast
 from datasets import Dataset
 from trl.core import LengthSampler
+import torch.nn.utils.rnn as rnn_utils
 
 # Below is an example function to build the dataset. In our case, we use the IMDB dataset
 # from the `datasets` library. One should customize this function to train the model on
@@ -60,6 +61,12 @@ def build_dataset(
         ds = ds.shuffle(seed=2023).select(range(size))
     return ds
 
+
+def padding(data):
+    padded = rnn_utils.pad_sequence(data)
+    padded = list(map(torch.Tensor, padded.T))
+    return padded
+
 def build_pad_dataset(
     config, dataset_path='modeldata/dialogue_dataset.p', input_min_text_length=5, input_max_text_length=100, size=-1
 ):
@@ -99,9 +106,13 @@ def build_pad_dataset(
         return sample
 
     ds = ds.map(tokenize, batched=False)
+    #og = ds["input_ids"]
+    #ds_ids = padding(torch.tensor(ds["input_ids"]))
+    #ds["input_ids"] = ds_ids
+
     ds.set_format(type="torch")
 
-    ds = ds.train_test_split(test_size=0.2, shuffle=False)["train"]
+    #ds = ds.train_test_split(test_size=0.2, shuffle=False)["train"]
     if size > -1:
         ds = ds.shuffle(seed=2023).select(range(size))
     return ds
@@ -149,9 +160,9 @@ def build_train_dataset(
     ds = ds.map(tokenize, batched=False)
     ds.set_format(type="torch")
 
-    ds = ds.train_test_split(test_size=0.2, shuffle=False)["train"]
+    #ds = ds.train_test_split(test_size=0.2, shuffle=False)["train"]
     if size > -1:
-        ds = ds.shuffle(seed=2023).select(range(size))
+        ds = ds.shuffle(seed=2024).select(range(size))
     return ds
 
 
