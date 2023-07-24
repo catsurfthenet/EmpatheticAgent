@@ -21,4 +21,3 @@ async def play_chord(ctx, chord):
     # Code to actually play the desired chord goes here
 
 # Run the bot with your Discord bot token
-bot.run('MTEyNDg1NDI2MzM5OTU4ODAzMA.GRJm37.aQE3IakGTJ_Ec-mbi01KnyLgYbdqGbv01jGMOk')
