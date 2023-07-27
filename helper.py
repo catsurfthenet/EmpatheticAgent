@@ -33,6 +33,15 @@ def build_dataset(
     """
     tokenizer = AutoTokenizer.from_pretrained(config.model_name)
     tokenizer.pad_token = tokenizer.eos_token
+    emo_labels = ['sadness', 'disappointment', 'neutral', 'fear', 'nervousness', 'disapproval', 'realization',
+                  'annoyance', 'grief', 'approval', 'caring', 'remorse', 'disgust', 'desire', 'love', 'anger',
+                  'embarrassment', 'joy', 'admiration', 'relief', 'surprise', 'optimism', 'confusion', 'curiosity',
+                  'amusement', 'excitement', 'gratitude', 'pride']
+    emo_labels = [f"[{i}]" for i in emo_labels]
+    special_tokens_dict = {'additional_special_tokens': emo_labels}
+    num_added_toks = tokenizer.add_special_tokens(special_tokens_dict)
+    for i in emo_labels:
+        tok_id = tokenizer.convert_tokens_to_ids(i)
 
     #ds = load_dataset(dataset_name, split="train")
     if (os.path.exists(dataset_path)):
@@ -84,6 +93,15 @@ def build_pad_dataset(
     """
     tokenizer = AutoTokenizer.from_pretrained(config.model_name)
     tokenizer.pad_token = tokenizer.eos_token
+    emo_labels = ['sadness', 'disappointment', 'neutral', 'fear', 'nervousness', 'disapproval', 'realization',
+                  'annoyance', 'grief', 'approval', 'caring', 'remorse', 'disgust', 'desire', 'love', 'anger',
+                  'embarrassment', 'joy', 'admiration', 'relief', 'surprise', 'optimism', 'confusion', 'curiosity',
+                  'amusement', 'excitement', 'gratitude', 'pride']
+    emo_labels = [f"[{i}]" for i in emo_labels]
+    special_tokens_dict = {'additional_special_tokens': emo_labels}
+    num_added_toks = tokenizer.add_special_tokens(special_tokens_dict)
+    for i in emo_labels:
+        tok_id = tokenizer.convert_tokens_to_ids(i)
 
     #ds = load_dataset(dataset_name, split="train")
     if (os.path.exists(dataset_path)):
@@ -99,7 +117,7 @@ def build_pad_dataset(
         continuation = sample["target"] # utterance
 
         sample["input_ids"] = tokenizer.encode(prompt)[: input_size()]
-        sample["input_ids"] += [0] * max((128 - len(sample["input_ids"])), 0)
+        sample["input_ids"] += [2] * max((128 - len(sample["input_ids"])), 0)
         #sample["target_ids"] = tokenizer.encode(continuation)[: input_size()]
         sample["query"] = {"prompt": tokenizer.decode(sample["input_ids"]),
                            "target": continuation}
@@ -134,6 +152,15 @@ def build_train_dataset(
     """
     tokenizer = AutoTokenizer.from_pretrained(config.model_name)
     tokenizer.pad_token = tokenizer.eos_token
+    emo_labels = ['sadness', 'disappointment', 'neutral', 'fear', 'nervousness', 'disapproval', 'realization',
+                  'annoyance', 'grief', 'approval', 'caring', 'remorse', 'disgust', 'desire', 'love', 'anger',
+                  'embarrassment', 'joy', 'admiration', 'relief', 'surprise', 'optimism', 'confusion', 'curiosity',
+                  'amusement', 'excitement', 'gratitude', 'pride']
+    emo_labels = [f"[{i}]" for i in emo_labels]
+    special_tokens_dict = {'additional_special_tokens': emo_labels}
+    num_added_toks = tokenizer.add_special_tokens(special_tokens_dict)
+    for i in emo_labels:
+        tok_id = tokenizer.convert_tokens_to_ids(i)
 
     #ds = load_dataset(dataset_name, split="train")
     if (os.path.exists(dataset_path)):
@@ -149,8 +176,10 @@ def build_train_dataset(
         continuation = sample["target"] # utterance
         target_emotion = sample["target_emo"]
 
+        #sample["input_ids"] = tokenizer.encode_plus(prompt, add_special_tokens=True)[: input_size()]
         sample["input_ids"] = tokenizer.encode(prompt)[: input_size()]
-        #sample["input_ids"] += [0] * max((128 - len(sample["input_ids"])), 0)
+        #tokens = tokenizer.convert_ids_to_tokens(sample["input_ids"])
+        #sample["input_ids"] += [2] * max((128 - len(sample["input_ids"])), 0)
         #sample["target_ids"] = tokenizer.encode(continuation)[: input_size()]
         sample["query"] = {"prompt": tokenizer.decode(sample["input_ids"]),
                            "target": continuation,
@@ -165,6 +194,65 @@ def build_train_dataset(
         ds = ds.shuffle(seed=2024).select(range(size))
     return ds
 
+def build_pretrain_dataset(
+    config, dataset_path='modeldata/dialogue_dataset.p', input_min_text_length=5, input_max_text_length=100, size=-1
+):
+    """
+    Build dataset for training. This builds the dataset from `load_dataset`, one should
+    customize this function to train the model on its own dataset.
+
+    Args:
+        dataset_name (`str`):
+            The name of the dataset to be loaded.
+
+    Returns:
+        dataloader (`torch.utils.data.DataLoader`):
+            The dataloader for the dataset.
+    """
+    tokenizer = AutoTokenizer.from_pretrained(config.model_name)
+    tokenizer.pad_token = tokenizer.eos_token
+    emo_labels = ['sadness', 'disappointment', 'neutral', 'fear', 'nervousness', 'disapproval', 'realization',
+                  'annoyance', 'grief', 'approval', 'caring', 'remorse', 'disgust', 'desire', 'love', 'anger',
+                  'embarrassment', 'joy', 'admiration', 'relief', 'surprise', 'optimism', 'confusion', 'curiosity',
+                  'amusement', 'excitement', 'gratitude', 'pride']
+    emo_labels = [f"[{i}]" for i in emo_labels]
+    special_tokens_dict = {'additional_special_tokens': emo_labels}
+    num_added_toks = tokenizer.add_special_tokens(special_tokens_dict)
+    for i in emo_labels:
+        tok_id = tokenizer.convert_tokens_to_ids(i)
+
+    #ds = load_dataset(dataset_name, split="train")
+    if (os.path.exists(dataset_path)):
+        print("LOADING empathetic_dialogue")
+        with open(dataset_path, "rb") as f:
+            [data] = pickle.load(f)
+    ds = Dataset.from_dict(data)
+
+    input_size = LengthSampler(input_min_text_length, input_max_text_length)
+
+    def tokenize(sample):
+        prompt = sample["prompt"] # prompt
+        continuation = sample["target"] # utterance
+        sample["input_ids"] = tokenizer(prompt, add_special_tokens=True)["input_ids"] #, padding='max_length', max_length=128
+
+        #sample["input_ids"] = tokenizer.encode_plus(prompt, add_special_tokens=True)["input_ids"][: input_size()]
+        sample["input_ids"] += [0] * max((128 - len(sample["input_ids"])), 0)
+        #sample["target_ids"] = tokenizer.encode(continuation)[: input_size()]
+        sample["query"] = {"prompt": tokenizer.batch_decode(sample["input_ids"]),
+                           "target": continuation}
+        return sample
+
+    ds = ds.map(tokenize, batched=False)
+    #og = ds["input_ids"]
+    #ds_ids = padding(torch.tensor(ds["input_ids"]))
+    #ds["input_ids"] = ds_ids
+
+    ds.set_format(type="torch")
+
+    #ds = ds.train_test_split(test_size=0.2, shuffle=False)["train"]
+    if size > -1:
+        ds = ds.shuffle(seed=2023).select(range(size))
+    return ds
 
 def get_mean(scores):
     return (sum(scores) / len(scores))
