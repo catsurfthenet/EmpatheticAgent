@@ -210,7 +210,7 @@ def build_pretrain_dataset(
             The dataloader for the dataset.
     """
     tokenizer = AutoTokenizer.from_pretrained(config.model_name)
-    tokenizer.pad_token = tokenizer.eos_token
+    #tokenizer.pad_token = tokenizer.eos_token
     emo_labels = ['sadness', 'disappointment', 'neutral', 'fear', 'nervousness', 'disapproval', 'realization',
                   'annoyance', 'grief', 'approval', 'caring', 'remorse', 'disgust', 'desire', 'love', 'anger',
                   'embarrassment', 'joy', 'admiration', 'relief', 'surprise', 'optimism', 'confusion', 'curiosity',
@@ -233,10 +233,10 @@ def build_pretrain_dataset(
     def tokenize(sample):
         prompt = sample["prompt"] # prompt
         continuation = sample["target"] # utterance
-        sample["input_ids"] = tokenizer(prompt, add_special_tokens=True)["input_ids"] #, padding='max_length', max_length=128
+        sample["input_ids"] = tokenizer(prompt, add_special_tokens=True, padding='max_length', max_length=128, truncation=True)["input_ids"] #, padding='max_length', max_length=128
 
         #sample["input_ids"] = tokenizer.encode_plus(prompt, add_special_tokens=True)["input_ids"][: input_size()]
-        sample["input_ids"] += [0] * max((128 - len(sample["input_ids"])), 0)
+        #sample["input_ids"] += [0] * max((128 - len(sample["input_ids"])), 0)
         #sample["target_ids"] = tokenizer.encode(continuation)[: input_size()]
         sample["query"] = {"prompt": tokenizer.batch_decode(sample["input_ids"]),
                            "target": continuation}

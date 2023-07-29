@@ -75,11 +75,11 @@ reward_function = emo_count_ppl_toxic
 emp_weight = 1 #0
 toxicity_weight = 0
 fluency_weight = 0 #1
-ref_gen_emo_match_reward = 2
-reward_scale = 2
+ref_gen_emo_match_reward = 0
+reward_scale = 1
 use_target_steps = 0
 
-lr = 1.47e-7 #-9
+lr = 1.47e-5 #-9
 weight_decay = 0.001
 ppo_epoch_num = 10
 DEV = True
@@ -90,8 +90,8 @@ epoch_num = 1 # number of outer loops
 shared_layers = 4
 gamma = 0.99
 
-train_dataset_path = "modeldata/ws_empathy_clean_count_score_emo_train_dialogue_dataset.p" #'modeldata/emo_count_train_dialogue_dataset.p' #"modeldata/ws_empathy_clean_prompt_emo_train_dialogue_dataset.p"  #
-save_path_prefix = f"best_cand4_outer{epoch_num}_share{shared_layers}_scale{reward_scale}_empathy_clean_count_ED_emo_resp{ref_gen_emo_match_reward}xppl_{optimiser_choice}_bs{input_batch_size}_lr{lr}_gamma{gamma}_emo_count_w1-0-0" #"DEV_lr-7_ppl_toxic_w4-6-0" #"DEV-mimic-lr-6-ppl-toxic" # "DEV_SGD_lr-9_emo_toxic_w6-4-0"
+train_dataset_path = "modeldata/ws_empathy_clean_count_top10_score0.4_emo_train_dialogue_dataset.p" #'modeldata/emo_count_train_dialogue_dataset.p' #"modeldata/ws_empathy_clean_prompt_emo_train_dialogue_dataset.p"  #
+save_path_prefix = f"best_cand4_outer{epoch_num}_share{shared_layers}_scale{reward_scale}_empathy_clean_count0.4_ED_emo_resp{ref_gen_emo_match_reward}xppl_{optimiser_choice}_bs{input_batch_size}_lr{lr}_gamma{gamma}_emo_count_w1-0-0" #"DEV_lr-7_ppl_toxic_w4-6-0" #"DEV-mimic-lr-6-ppl-toxic" # "DEV_SGD_lr-9_emo_toxic_w6-4-0"
 load_path_prefix = "./"
 ppo_model = f"{load_path_prefix}DEV_lr-9_ppl_toxic_w6-4-0-blenderbot-400m-emo-probi-ppl-last-score0.6292313380390405-ppl4.034670352935791"
 
@@ -271,16 +271,19 @@ with open(f'{save_path_prefix}_score_train_output.txt', 'w') as f:
             query_tensors = batch["input_ids"]
             # Get response from the policy model
             response_tensors = []
+            response_tensors = ppo_trainer.generate(query_tensors, num_beams=3, max_new_tokens=40, **generation_kwargs)
+            """
             for q in range(len(query_tensors)):
                 gen_len = output_length_sampler()
                 generation_kwargs["max_new_tokens"] = gen_len
                 if counter >= use_target_steps:
-                    response = ppo_trainer.generate(query_tensors[q], **generation_kwargs)
+                    response = ppo_trainer.generate(query_tensors[q], num_beams=3, **generation_kwargs)
                 else:
                     response = torch.tensor(tokenizer.encode(batch["query"][q]["target"]), device=device)
                 if len(response) < 4:
                     response = torch.nn.functional.pad(response, (1,2), "constant", 0)
                 response_tensors.append(response.squeeze()[-gen_len:])
+            """
             #resp_gen_time = time.time()
             #print(f"Generate response in {resp_gen_time - start_loop}")
             og_response_tensors = response_tensors

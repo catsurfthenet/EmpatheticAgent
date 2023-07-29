@@ -2,7 +2,7 @@ import torch
 import numpy as np
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 from trl import PPOConfig
-from helper import build_train_dataset, build_pad_dataset, padding, build_pretrain_dataset, get_mean
+from helper import build_train_dataset, build_pad_dataset, padding, build_pretrain_dataset, get_mean, get_emo_counts
 from torch.utils.data import DataLoader
 import torch.nn.utils.rnn as rnn_utils
 from torch.optim import Adam
@@ -15,21 +15,22 @@ config = PPOConfig(
     model_name="facebook/blenderbot-400M-distill",
     learning_rate=5e-5,
 )
-num_epochs = 1
-model_save_path = f"pretraining_preprocessed_model_{num_epochs}epochs"
+num_epochs = 10
+model_save_path = f"pretraining_preprocessed_model_lr{config.learning_rate}_FACE_{num_epochs}epochs"
 train_dataset_path = "modeldata/sp_token_ws_empathy_clean_count_top10_score0.4_emo_train_dialogue_dataset.p"
 dev_dataset_path = "modeldata/ws_empathy_clean_prompt_emo_validation_dialogue_dataset.p"
 min_input_length = 30
 max_input_length = 100
 train_set_size = -1 # all
+dev_set_size = -1
 checkpoint = 200
 device = torch.cuda.current_device() if torch.cuda.is_available() else "cpu"
-device = torch.device("mps")
-weights = torch.tensor([1, 1.5], device=device)
+#device = torch.device("mps")
+weights = torch.tensor([1, 1.5, 1], device=device) #[nll, div, emo]
 
 # load dataset
 dataset = build_pretrain_dataset(config, dataset_path=train_dataset_path, input_min_text_length=min_input_length, input_max_text_length=max_input_length, size=train_set_size)
-dev_dataset = build_train_dataset(config, dataset_path=dev_dataset_path, input_min_text_length=min_input_length, input_max_text_length=max_input_length, size=train_set_size)
+dev_dataset = build_train_dataset(config, dataset_path=dev_dataset_path, input_min_text_length=min_input_length, input_max_text_length=max_input_length, size=dev_set_size)
 
 # dataloader
 train_dataloader = DataLoader(dataset, shuffle=True, batch_size=4)
@@ -95,8 +96,10 @@ for epoch in range(num_epochs):
             target_emo_ids = torch.tensor([[tokenizer.encode_plus(f"[{target_emo}]", add_special_tokens=True)["input_ids"][0]]], device=device)
             target_emo_ids_resp = torch.concat((torch.tensor(target_emo_ids), response.clone().detach()), 1)
             gen_text = tokenizer.decode(target_emo_ids_resp.squeeze(), skip_special_tokens=True)
+            target_resp = batch["target"][q]
             print(f"{counter}, {q} Prompt: {prompt_text}")
-            print(f"{counter}, {q} Response: {gen_text} \n")
+            print(f"{counter}, {q} Response: {gen_text}")
+            print(f"{counter}, {q} Target: {target_resp} \n")
             t_ids = tokenizer.encode_plus(batch["target"][q], add_special_tokens=True, padding='max_length', truncation=True, max_length=128)["input_ids"]
             target_ids.append(torch.tensor(t_ids, device=device))
 
@@ -108,6 +111,7 @@ for epoch in range(num_epochs):
         model_output = model(input_ids=outputs, labels=target_ids)
         nll_loss = model_output.loss # nll loss
         loss_logits = model_output.logits
+        print(f"NLL loss: {nll_loss}")
 
         # Calculate FACE, skip sp tokens
         current_freq = np.array(list(token_freq.values())[4:8008]) # 0-4, 8008+ are sp tokens
@@ -128,9 +132,14 @@ for epoch in range(num_epochs):
                     #a = loss_logits[i][o][token]
                     #b = weights_RF[token - 4]
                     div_loss += loss_logits[i][o][token] * weights_RF[token - 4] #account for offset
-        loss = torch.tensor([nll_loss, div_loss], device=device)
-        loss = sum(weights * loss)
-        #test = weights[0] * nll_loss + weights[1] * div_loss
+        #loss = torch.tensor([nll_loss, div_loss], requires_grad=True, device=device)
+        #loss = sum(weights * loss)
+        #emo_loss = get_emo_counts()
+
+
+
+        loss = weights[0] * nll_loss + weights[1] * div_loss
+        print(f"Weighted loss: {loss}")
         loss.backward()
 
         optimizer.step()
@@ -139,7 +148,7 @@ for epoch in range(num_epochs):
         progress_bar.update(1)
         if counter % checkpoint == 0:
             print(f"Saving model at counter {counter}... ")
-            model.save_pretrained(f"{model_save_path}-{counter}")
+            model.save_pretrained(f"{model_save_path}-{counter}-loss{format(loss, '.5f')}")
         counter += 1
 
 model.save_pretrained(f"{model_save_path}-last")
