@@ -16,6 +16,67 @@ import torch.nn.utils.rnn as rnn_utils
 # Below is an example function to build the dataset. In our case, we use the IMDB dataset
 # from the `datasets` library. One should customize this function to train the model on
 # its own dataset.
+def build_dataset_no_token(
+    config, dataset_path='modeldata/dialogue_dataset.p', input_min_text_length=5, input_max_text_length=100, size=-1
+):
+    """
+    Build dataset for training. This builds the dataset from `load_dataset`, one should
+    customize this function to train the model on its own dataset.
+
+    Args:
+        dataset_name (`str`):
+            The name of the dataset to be loaded.
+
+    Returns:
+        dataloader (`torch.utils.data.DataLoader`):
+            The dataloader for the dataset.
+    """
+    """
+    tokenizer = AutoTokenizer.from_pretrained(config.model_name)
+    tokenizer.pad_token = tokenizer.eos_token
+    emo_labels = ['sadness', 'disappointment', 'neutral', 'fear', 'nervousness', 'disapproval', 'realization',
+                  'annoyance', 'grief', 'approval', 'caring', 'remorse', 'disgust', 'desire', 'love', 'anger',
+                  'embarrassment', 'joy', 'admiration', 'relief', 'surprise', 'optimism', 'confusion', 'curiosity',
+                  'amusement', 'excitement', 'gratitude', 'pride']
+    emo_labels = [f"[{i}]" for i in emo_labels]
+    special_tokens_dict = {'additional_special_tokens': emo_labels}
+    num_added_toks = tokenizer.add_special_tokens(special_tokens_dict)
+    for i in emo_labels:
+        tok_id = tokenizer.convert_tokens_to_ids(i)
+    """
+    #ds = load_dataset(dataset_name, split="train")
+    if (os.path.exists(dataset_path)):
+        print("LOADING empathetic_dialogue")
+        with open(dataset_path, "rb") as f:
+            [data] = pickle.load(f)
+    ds = Dataset.from_dict(data)
+    if size > -1:
+        ds = ds.shuffle(seed=2024).select(range(size))
+
+    input_size = LengthSampler(input_min_text_length, input_max_text_length)
+
+    def format(sample):
+        prompt = sample["prompt"] # prompt
+        continuation = sample["target"] # utterance
+        target_emotion = sample["target_emo"]
+
+        #sample["input_ids"] = tokenizer.encode_plus(prompt, add_special_tokens=True)[: input_size()]
+        #sample["input_ids"] = tokenizer.encode(prompt)[: input_size()]
+        #tokens = tokenizer.convert_ids_to_tokens(sample["input_ids"])
+        #sample["input_ids"] += [2] * max((128 - len(sample["input_ids"])), 0)
+        #sample["target_ids"] = tokenizer.encode(continuation)[: input_size()]
+        sample["input_ids"] = sample["prompt"]
+        sample["query"] = {"prompt": prompt, #tokenizer.decode(sample["input_ids"]),
+                           "target": continuation,
+                           "target_emo": target_emotion}
+        return sample
+
+    ds = ds.map(format, batched=False)
+    ds.set_format(type="torch")
+
+    #ds = ds.train_test_split(test_size=0.2, shuffle=False)["train"]
+    return ds
+
 def build_dataset(
     config, dataset_path='modeldata/dialogue_dataset.p', input_min_text_length=5, input_max_text_length=100, size=-1
 ):
@@ -519,3 +580,50 @@ def emo_dis_bleu(batch_query, batch_response, prompt_results, emo_results, weigh
         score_list.append(np.float32(temp_score))
 
     return score_list, list_emo_score, BLEUscore_list
+
+def get_empathy_ratio(emp_results):
+    emp_results = Dataset.from_list(emp_results)
+    emp_results_labels = emp_results['label']
+
+    label_number = {label: emp_results_labels.count(label) for label in emp_results_labels}
+    label_names = list(zip(*label_number.items()))[0]
+
+    if len(label_names) > 3:
+        label0 = label_number['LABEL_0'] / len(emp_results_labels)
+        label1 = label_number['LABEL_1'] / len(emp_results_labels)
+        label2 = label_number['LABEL_2'] / len(emp_results_labels)
+    else:
+        label0, label1, label2 = 0, 0, 0
+        for lab in label_names:
+            # nothing to be added for LABEL_0
+            if lab == 'LABEL_0':
+                label0 = label_number[lab] / len(emp_results_labels)
+            elif lab == 'LABEL_1':
+                label1 = label_number[lab] / len(emp_results_labels)
+            elif lab == 'LABEL_2':
+                label2 = label_number[lab] / len(emp_results_labels)
+    emp_ratio = [label0, label1, label2]
+
+    return emp_ratio
+
+def get_FACE_loss(token_freq, outputs, special_ids, loss_logits):
+    current_freq = np.array(list(token_freq.values())[4:8008])  # 0-4, 8008+ are sp tokens
+    relative_freq = current_freq / sum(current_freq)
+    max_RF = max(relative_freq)
+    weights_RF = (-1 / max_RF) * relative_freq + 1
+    # normalise
+    weights_RF = weights_RF / sum(weights_RF)
+    # weights_RF = weights_RF * len(weights_RF) # make mean = 1
+    div_loss = 0
+    for i in range(len(outputs)):
+        # logits_wo_sp_tokens = loss_logits[i][0]
+        for o in range(len(outputs[i])):
+            if outputs[i][o] in special_ids:  # skip special tokens
+                continue
+            token = outputs[i][o]
+            if (token - 4) >= 0:  # assert no indexing error
+                # a = loss_logits[i][o][token]
+                # b = weights_RF[token - 4]
+                div_loss += loss_logits[i][o][token] * weights_RF[token - 4] #account for offset
+
+    return div_loss
