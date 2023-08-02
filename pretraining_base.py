@@ -3,7 +3,7 @@ import pickle
 import torch
 import numpy as np
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, pipeline, AutoModelForSequenceClassification, \
-    RobertaTokenizerFast, RobertaForSequenceClassification
+    RobertaTokenizerFast, RobertaForSequenceClassification, BertModel, BertTokenizer
 from trl import PPOConfig
 from helper import build_train_dataset, build_pad_dataset, padding, build_pretrain_dataset, get_mean, get_emo_counts, \
     get_js_distance, get_FACE_loss
@@ -20,23 +20,24 @@ config = PPOConfig(
     learning_rate=5e-5,
 )
 load_path_prefix = ""
-val = False
-num_epochs = 10
+val = True
+num_epochs = 1
 save_path_prefix = "pretraining_preprocessed_model"
 train_dataset_path = "modeldata/sp_token_ws_empathy_clean_count_top10_score0.4_emo_train_dialogue_dataset.p"
 dev_dataset_path = "modeldata/ws_empathy_clean_prompt_emo_validation_dialogue_dataset.p"
 min_input_length = 30
 max_input_length = 100
+train_batch_size = 32
+dev_batch_size = 8
 train_set_size = 2000 # all
-dev_set_size = 8
+dev_set_size = 80
 checkpoint = 500
-train_batch_size = 4
-dev_batch_size = 4
+
 device = torch.cuda.current_device() if torch.cuda.is_available() else "cpu"
 #device = torch.device("mps")
-weights = torch.tensor([1, 1.5, 1, 0], device=device) #[nll, div, emo, short_len_penalty] # default: 1, 1.5, 1, 0
+weights = torch.tensor([1, 1, 1.5, 0], device=device) #[nll, div, sim, emo] # default: 1, 1.5, 1, 0
 w = weights
-model_save_path = f"{save_path_prefix}2_lr{config.learning_rate}_w{w[0]}-{w[1]}{w[2]}_FACE_mean_emo_probi_{num_epochs}epochs"
+model_save_path = f"{save_path_prefix}2-8_lr{config.learning_rate}_w{w[0]}-{w[1]}-{w[2]}_FACE_norm_sim_loss_{num_epochs}epochs"
 
 # load dataset
 dataset = build_pretrain_dataset(config, dataset_path=train_dataset_path, input_min_text_length=min_input_length, input_max_text_length=max_input_length, size=train_set_size)
@@ -68,14 +69,18 @@ token_freq = dict(zip(token_ids, zeros))
 reward_model_id = "SamLowe/roberta-base-go_emotions"
 emo_tokenizer = AutoTokenizer.from_pretrained(reward_model_id)
 emo_model = AutoModelForSequenceClassification.from_pretrained(reward_model_id, torch_dtype=torch.float32).to(device)
-reward_classifier = pipeline('text-classification', model=reward_model_id, tokenizer=reward_model_id, max_length=128, truncation=True, top_k=None) #, device=0
+reward_classifier = pipeline('text-classification', model=reward_model_id, tokenizer=reward_model_id, max_length=128, truncation=True, top_k=None, device=0) #
 
 emp_classifier_model = f"{load_path_prefix}models/roberta-empathy-03-06-2023-18_21_58"
 empathy_model_id = emp_classifier_model
 empathy_tokenizer = RobertaTokenizerFast.from_pretrained('roberta-base')
 empathy_model = RobertaForSequenceClassification.from_pretrained(empathy_model_id, torch_dtype=torch.float32).to(device)
 # change
-empathy_classifier = pipeline('text-classification', model=empathy_model, tokenizer=empathy_tokenizer, max_length=512, truncation=True, device=0)
+empathy_classifier = pipeline('text-classification', model=empathy_model, tokenizer=empathy_tokenizer, max_length=512, truncation=True, device=0) #
+
+bert_model = BertModel.from_pretrained("bert-base-uncased")
+bert_tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+cos = torch.nn.CosineSimilarity() #dim=1
 
 # load optimizer
 optimizer = Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=config.learning_rate)
@@ -108,7 +113,7 @@ for epoch in range(num_epochs):
         outputs = []
         target_ids = []
         list_prompt_texts, list_gen_texts = [], []
-        num_short_resp = torch.tensor(0, device=device)
+
         for q in range(len(query_tensors)):
             q1 = query_tensors[q].nonzero()[-1]
             query = query_tensors[q][:(q1+1)].unsqueeze(0).to(device)
@@ -118,13 +123,11 @@ for epoch in range(num_epochs):
                 token_freq[int(t)] += 1
             prompt_text = batch["prompt"][q].replace("_comma_", ",")
             list_prompt_texts.append(prompt_text)
-            target_emo = batch["target_emo"][q]
-            target_emo_ids = torch.tensor([[tokenizer.encode_plus(f"[{target_emo}]", add_special_tokens=True)["input_ids"][0]]], device=device)
-            target_emo_ids_resp = torch.concat((torch.tensor(target_emo_ids), response.clone().detach()), 1)
-            gen_text = tokenizer.decode(target_emo_ids_resp.squeeze(), skip_special_tokens=True)
+            #target_emo = batch["target_emo"][q]
+            #target_emo_ids = torch.tensor([[tokenizer.encode_plus(f"[{target_emo}]", add_special_tokens=True)["input_ids"][0]]], device=device)
+            #target_emo_ids_resp = torch.concat((torch.tensor(target_emo_ids), response.clone().detach()), 1)
+            gen_text = tokenizer.decode(response.squeeze(), skip_special_tokens=True)
             list_gen_texts.append(gen_text)
-            if len(gen_text) < 5:
-                num_short_resp += 1
             target_resp = batch["target"][q]
             print(f"{counter}, {q} Prompt: {prompt_text}")
             print(f"{counter}, {q} Response: {gen_text}")
@@ -147,10 +150,26 @@ for epoch in range(num_epochs):
         #loss = torch.tensor([nll_loss, div_loss], requires_grad=True, device=device)
         #loss = sum(weights * loss)
 
-        prompt_results = reward_classifier(list_prompt_texts)
-        emo_results = reward_classifier(list_gen_texts)
-        emo_loss, mean_emo_loss = get_js_distance(prompt_results, emo_results)
-        loss = weights[0] * nll_loss + weights[1] * div_loss + weights[2] * mean_emo_loss #+ weights[3] * num_short_resp
+        #prompt_results = reward_classifier(list_prompt_texts)
+        #emo_results = reward_classifier(list_gen_texts)
+        #emo_loss, mean_emo_loss = get_js_distance(prompt_results, emo_results)
+        target_txt = tokenizer.batch_decode(target_ids, skip_special_tokens=True)
+        bert_output_token = \
+        bert_tokenizer(list_gen_texts, return_tensors="pt", padding='max_length', max_length=64, truncation=True)[
+            "input_ids"]
+        bert_target_token = \
+        bert_tokenizer(target_txt, return_tensors="pt", padding='max_length', max_length=64, truncation=True)[
+            "input_ids"]
+        output_embeddings = bert_model.embeddings.word_embeddings(bert_output_token)
+        target_embeddings = bert_model.embeddings.word_embeddings(bert_target_token)
+        sim_loss = 0
+        for e in range(len(output_embeddings)):
+            sim_loss += -(cos(output_embeddings[e],
+                              target_embeddings[e]) - 1)  # [-1, 1(identical)] - 1 -> [-2, 0] -> [2, 0]
+        norm_sim_loss = sum(sim_loss) / (len(sim_loss) * len(outputs))
+
+        #loss = weights[0] * nll_loss + weights[1] * div_loss + weights[2] * mean_emo_loss
+        loss = weights[0] * nll_loss + weights[1] * div_loss + weights[2] * (norm_sim_loss.to(device)) #+ weights[3] * num_short_resp
         print(f"Weighted loss: {loss}")
         loss_copy = loss.clone().detach().cpu()
         list_loss.append(loss_copy)
@@ -181,7 +200,7 @@ for epoch in range(num_epochs):
                 dev_prompts = dev_batch["prompt"]
                 response_tensors = pad_sequence(response_tensors, batch_first=True)
                 target_ids = pad_sequence(target_ids, batch_first=True)
-                prompt_results = reward_classifier(dev_prompts)
+                #prompt_results = reward_classifier(dev_prompts)
                 emo_results = reward_classifier(generated_texts)  # TODO: add sp tokens to generated output
                 list_resp_emo = []
                 for e in range(len(emo_results)):
@@ -200,6 +219,20 @@ for epoch in range(num_epochs):
                 # target_ids = pad_sequence(target_ids, batch_first=True)
                 resp_w_sp_token = torch.stack(resp_w_sp_token)
                 model_output = model(input_ids=resp_w_sp_token, labels=target_ids)
+                target_txt = tokenizer.batch_decode(target_ids, skip_special_tokens=True)
+                bert_output_token = \
+                bert_tokenizer(generated_texts, return_tensors="pt", padding='max_length', max_length=64,
+                               truncation=True)["input_ids"]
+                bert_target_token = \
+                bert_tokenizer(target_txt, return_tensors="pt", padding='max_length', max_length=64, truncation=True)[
+                    "input_ids"]
+                output_embeddings = bert_model.embeddings.word_embeddings(bert_output_token)
+                target_embeddings = bert_model.embeddings.word_embeddings(bert_target_token)
+                sim_loss = 0
+                for e in range(len(output_embeddings)):
+                    # [-1, 1(identical)] - 1 -> [-2, 0] -> [2, 0]
+                    sim_loss += -(cos(output_embeddings[e], target_embeddings[e]) - 1)
+                norm_sim_loss = sum(sim_loss) / (len(sim_loss) * len(outputs))
                 nll_loss = model_output.loss  # nll loss
 
                 loss_logits = model_output.logits
@@ -215,12 +248,12 @@ for epoch in range(num_epochs):
                 #norm_emp_penalty = emp_penalty / len(list_gen_texts)
                 """
 
-                emo_loss, mean_emo_loss = get_emo_counts(prompt_results, emo_results)
-                dev_loss = weights[0] * nll_loss + weights[1] * div_loss + weights[2] * mean_emo_loss  # + weights[3] * num_short_resp
-                list_dev_loss.append(dev_loss)
+                #emo_loss, mean_emo_loss = get_js_distance(prompt_results, emo_results)
+                dev_loss = weights[0] * nll_loss + weights[1] * div_loss + weights[2] * norm_sim_loss.to(device)  # + weights[3] * num_short_resp
+                dev_loss_copy = dev_loss.clone().detach().cpu()
+                list_dev_loss.append(dev_loss_copy)
                 print(f"Validation loss: {dev_loss}")
-                """
-                """
+
 
 model.save_pretrained(f"{model_save_path}-last")
 f3 = open(f"{model_save_path}_loss.p", 'wb')
