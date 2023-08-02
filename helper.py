@@ -607,23 +607,47 @@ def get_empathy_ratio(emp_results):
     return emp_ratio
 
 def get_FACE_loss(token_freq, outputs, special_ids, loss_logits):
-    current_freq = np.array(list(token_freq.values())[4:8008])  # 0-4, 8008+ are sp tokens
-    relative_freq = current_freq / sum(current_freq)
-    max_RF = max(relative_freq)
-    weights_RF = (-1 / max_RF) * relative_freq + 1
+    weights_RF = get_RF(token_freq)
     # normalise
     weights_RF = weights_RF / sum(weights_RF)
     # weights_RF = weights_RF * len(weights_RF) # make mean = 1
     div_loss = 0
     for i in range(len(outputs)):
         # logits_wo_sp_tokens = loss_logits[i][0]
-        for o in range(len(outputs[i])):
+        tensor_size = len(outputs[i]) if len(outputs[i]) < len(loss_logits[i]) else len(loss_logits[i])
+        for o in range(tensor_size):
             if outputs[i][o] in special_ids:  # skip special tokens
                 continue
             token = outputs[i][o]
             if (token - 4) >= 0:  # assert no indexing error
-                # a = loss_logits[i][o][token]
-                # b = weights_RF[token - 4]
+                #a = loss_logits[i][o][token]
+                #b = weights_RF[token - 4]
                 div_loss += loss_logits[i][o][token] * weights_RF[token - 4] #account for offset
 
     return div_loss
+
+
+def get_FACE_reward(token_freq, outputs, special_ids):
+    weights_RF = get_RF(token_freq)
+    # normalise
+    weights_RF = weights_RF / sum(weights_RF)
+    # weights_RF = weights_RF * len(weights_RF) # make mean = 1
+    div_reward = 0
+    for i in range(len(outputs)):
+        # logits_wo_sp_tokens = loss_logits[i][0]
+        tensor_size = len(outputs[i])
+        for o in range(tensor_size):
+            if outputs[i][o] in special_ids:  # skip special tokens
+                continue
+            token = outputs[i][o]
+            if (token - 4) >= 0:  # assert no indexing error
+                div_reward += weights_RF[token - 4] #account for offset
+    return div_reward
+
+
+def get_RF(token_freq):
+    current_freq = np.array(list(token_freq.values())[4:8008])  # 0-4, 8008+ are sp tokens
+    relative_freq = current_freq / sum(current_freq)
+    max_RF = max(relative_freq)
+    weights_RF = (-1 / max_RF) * relative_freq + 1
+    return weights_RF
