@@ -110,6 +110,8 @@ def build_dataset(
         with open(dataset_path, "rb") as f:
             [data] = pickle.load(f)
     ds = Dataset.from_dict(data)
+    if size > -1:
+        ds = ds.shuffle(seed=2023).select(range(size))
 
     input_size = LengthSampler(input_min_text_length, input_max_text_length)
 
@@ -127,8 +129,6 @@ def build_dataset(
     ds.set_format(type="torch")
 
     ds = ds.train_test_split(test_size=0.2, shuffle=False)["train"]
-    if size > -1:
-        ds = ds.shuffle(seed=2023).select(range(size))
     return ds
 
 
@@ -170,6 +170,8 @@ def build_pad_dataset(
         with open(dataset_path, "rb") as f:
             [data] = pickle.load(f)
     ds = Dataset.from_dict(data)
+    if size > -1:
+        ds = ds.shuffle(seed=2023).select(range(size))
 
     input_size = LengthSampler(input_min_text_length, input_max_text_length)
 
@@ -192,8 +194,7 @@ def build_pad_dataset(
     ds.set_format(type="torch")
 
     #ds = ds.train_test_split(test_size=0.2, shuffle=False)["train"]
-    if size > -1:
-        ds = ds.shuffle(seed=2023).select(range(size))
+
     return ds
 
 def build_train_dataset(
@@ -229,6 +230,8 @@ def build_train_dataset(
         with open(dataset_path, "rb") as f:
             [data] = pickle.load(f)
     ds = Dataset.from_dict(data)
+    if size > -1:
+        ds = ds.shuffle(seed=2024).select(range(size))
 
     input_size = LengthSampler(input_min_text_length, input_max_text_length)
 
@@ -251,8 +254,6 @@ def build_train_dataset(
     ds.set_format(type="torch")
 
     #ds = ds.train_test_split(test_size=0.2, shuffle=False)["train"]
-    if size > -1:
-        ds = ds.shuffle(seed=2024).select(range(size))
     return ds
 
 def build_pretrain_dataset(
@@ -288,6 +289,8 @@ def build_pretrain_dataset(
         with open(dataset_path, "rb") as f:
             [data] = pickle.load(f)
     ds = Dataset.from_dict(data)
+    if size > -1:
+        ds = ds.shuffle(seed=2023).select(range(size))
 
     input_size = LengthSampler(input_min_text_length, input_max_text_length)
 
@@ -304,15 +307,8 @@ def build_pretrain_dataset(
         return sample
 
     ds = ds.map(tokenize, batched=False)
-    #og = ds["input_ids"]
-    #ds_ids = padding(torch.tensor(ds["input_ids"]))
-    #ds["input_ids"] = ds_ids
-
     ds.set_format(type="torch")
-
     #ds = ds.train_test_split(test_size=0.2, shuffle=False)["train"]
-    if size > -1:
-        ds = ds.shuffle(seed=2023).select(range(size))
     return ds
 
 def get_mean(scores):
