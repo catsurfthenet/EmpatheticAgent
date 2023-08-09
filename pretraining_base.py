@@ -20,6 +20,7 @@ config = PPOConfig(
     model_name=f"{load_path_prefix}models/local-facebook-blenderbot-400M-distill",
     learning_rate=5e-7, # empathy: 5e-7, ts2000; time_test: 1e-6, ts5000
 )
+SAVE_MODEL = False
 val = True
 num_epochs = 25
 save_path_prefix = "pretraining_preprocessed_model"
@@ -42,7 +43,7 @@ device = torch.cuda.current_device() if torch.cuda.is_available() else "cpu"
 device = torch.device("mps")
 weights = torch.tensor([0.5, 1, 1.5, 0], device=device) #[nll, div, sim, emo] # default: 1, 1.5, 1, 0
 w = weights
-model_save_path = f"{save_path_prefix}8-8_{optimiser_choice}_vckp{val_checkpoint}_ts{train_set_size}_bs{train_batch_size}_lr{config.learning_rate}_w{w[0]}-{w[1]}-{w[2]}-{w[3]}_FACE_norm_sim_loss_{num_epochs}epochs"
+model_save_path = f"{save_path_prefix}8-8_{optimiser_choice}_wd{weight_decay}_vckp{val_checkpoint}_ts{train_set_size}_bs{train_batch_size}_lr{config.learning_rate}_w{w[0]}-{w[1]}-{w[2]}-{w[3]}_FACE_norm_sim_loss_{num_epochs}epochs"
 
 # load dataset
 dataset = build_pretrain_dataset(config, dataset_path=train_dataset_path, input_min_text_length=min_input_length, input_max_text_length=max_input_length, size=train_set_size)
@@ -126,7 +127,8 @@ for epoch in range(num_epochs):
     print(f"Start training epoch {epoch}... ")
     for batch in train_dataloader:
         #batch = {k: v.to(device) for k, v in batch.items()}
-        query_tensors = batch["input_ids"].to(device)
+        #query_tensors = batch["input_ids"].to(device)
+        query_tensors = tokenizer(batch["prompt"], return_tensors="pt", padding=True, max_length=128, truncation=True, add_special_tokens=True)["input_ids"].to(device)
         target_ids = []
         list_prompt_texts, list_gen_texts = [], []
 
@@ -189,7 +191,7 @@ for epoch in range(num_epochs):
         lr_scheduler.step()
         optimizer.zero_grad()
         progress_bar.update(1)
-        if counter % checkpoint == 0:
+        if counter % checkpoint == 0 and SAVE_MODEL:
             print(f"Saving model at counter {counter}... ")
             model.save_pretrained(f"{model_save_path}-{counter}-loss{format(loss, '.5f')}")
 
