@@ -3,6 +3,7 @@ import pickle
 
 import nltk
 import torch
+from nltk import FreqDist, ngrams
 from nltk.tokenize import word_tokenize
 from scipy.spatial import distance
 from scipy.special import softmax, logit
@@ -647,3 +648,10 @@ def get_RF(token_freq):
     max_RF = max(relative_freq)
     weights_RF = (-1 / max_RF) * relative_freq + 1
     return weights_RF
+
+def compute_freq(tokens, n):
+
+    ngramfdist = FreqDist()
+    token_ngrams = ngrams(tokens, n)
+    ngramfdist.update(token_ngrams)
+    return ngramfdist

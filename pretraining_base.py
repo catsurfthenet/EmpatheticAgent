@@ -40,7 +40,7 @@ val_checkpoint = 125 # once per epoch
 
 
 device = torch.cuda.current_device() if torch.cuda.is_available() else "cpu"
-device = torch.device("mps")
+#device = torch.device("mps")
 weights = torch.tensor([0.5, 1, 1.5, 0], device=device) #[nll, div, sim, emo] # default: 1, 1.5, 1, 0
 w = weights
 model_save_path = f"{save_path_prefix}8-8_{optimiser_choice}_wd{weight_decay}_vckp{val_checkpoint}_ts{train_set_size}_bs{train_batch_size}_lr{config.learning_rate}_w{w[0]}-{w[1]}-{w[2]}-{w[3]}_FACE_norm_sim_loss_{num_epochs}epochs"
@@ -76,14 +76,14 @@ token_freq = dict(zip(token_ids, zeros))
 reward_model_id = f"{load_path_prefix}models/local-SamLowe-roberta-base-go_emotions"
 emo_tokenizer = AutoTokenizer.from_pretrained(reward_model_id)
 emo_model = AutoModelForSequenceClassification.from_pretrained(reward_model_id, torch_dtype=torch.float32).to(device)
-reward_classifier = pipeline('text-classification', model=reward_model_id, tokenizer=reward_model_id, max_length=128, truncation=True, top_k=None) #, device=0
+reward_classifier = pipeline('text-classification', model=reward_model_id, tokenizer=reward_model_id, max_length=128, truncation=True, top_k=None, device=0) #
 
 emp_classifier_model = f"{load_path_prefix}models/roberta-empathy-03-06-2023-18_21_58"
 empathy_model_id = emp_classifier_model
 empathy_tokenizer = RobertaTokenizerFast.from_pretrained('roberta-base')
 empathy_model = RobertaForSequenceClassification.from_pretrained(empathy_model_id, torch_dtype=torch.float32).to(device)
 # change
-empathy_classifier = pipeline('text-classification', model=empathy_model, tokenizer=empathy_tokenizer, max_length=512, truncation=True) #, device=0
+empathy_classifier = pipeline('text-classification', model=empathy_model, tokenizer=empathy_tokenizer, max_length=512, truncation=True, device=0) #
 
 bert_model = BertModel.from_pretrained(f"{load_path_prefix}models/local-bert-base-uncased")
 bert_tokenizer = BertTokenizer.from_pretrained(f"{load_path_prefix}models/local-bert-base-uncased")
