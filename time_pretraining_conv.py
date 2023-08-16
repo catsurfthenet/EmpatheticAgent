@@ -7,7 +7,7 @@ from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, pipeline, AutoMod
     RobertaTokenizerFast, RobertaForSequenceClassification, BertModel, BertTokenizer
 from trl import PPOConfig
 from helper import build_train_dataset, build_pad_dataset, padding, build_pretrain_dataset, get_mean, get_emo_counts, \
-    get_js_distance, get_FACE_loss, ngram_penalty
+    get_js_distance, get_FACE_loss, ngram_penalty, build_conv_pretrain_dataset
 from torch.utils.data import DataLoader
 import torch.nn.utils.rnn as rnn_utils
 from torch.optim import Adam, AdamW, SGD
@@ -26,8 +26,8 @@ SAVE_MODEL = True
 val = True
 num_epochs = 30 #80 (testing) #until 15-3 default: 30
 #save_path_prefix = "pretraining_preprocessed_model"
-train_dataset_path = "modeldata/sp_token_ws_empathy_clean_count_top10_score0.4_emo_train_ED_dataset.p"#sp_token_ws_empathy_clean_count_top10_score0.4_emo_train_dialogue_dataset.p"
-dev_dataset_path = "modeldata/sp_token_ws_empathy_clean_count_top10_score0.4_emo_validation_ED_dataset.p"#ws_empathy_clean_prompt_emo_validation_dialogue_dataset.p"
+train_dataset_path = "modeldata/sp_token_context_ws_empathy_clean_count_top10_score0.4_emo_train_ED_dataset.p"#sp_token_ws_empathy_clean_count_top10_score0.4_emo_train_dialogue_dataset.p"
+dev_dataset_path = "modeldata/sp_token_context_ws_empathy_clean_count_top10_score0.4_emo_validation_ED_dataset.p"#ws_empathy_clean_prompt_emo_validation_dialogue_dataset.p"
 min_input_length = 20
 max_input_length = 100
 train_batch_size = 16
@@ -46,11 +46,11 @@ device = torch.cuda.current_device() if torch.cuda.is_available() else "cpu"
 
 weights = torch.tensor([0.5, 2, 1, 0.5, 1], device=device) #[nll, div, sim, emo] # default: 0.5, 1, 1.5, 0
 w = weights
-model_save_path = f"FTM15-8-local_LinearLR_{optimiser_choice}_wd{weight_decay}_vckp{val_checkpoint}_ED_ts{train_set_size}_bs{train_batch_size}_lr{config.learning_rate}_w{w[0]}-{w[1]}-{w[2]}-{w[3]}-{w[4]}_FACE_norm_sim_loss_{num_epochs}epochs"
+model_save_path = f"FTM15-8-local_conv_LinearLR_{optimiser_choice}_wd{weight_decay}_vckp{val_checkpoint}_ED_ts{train_set_size}_bs{train_batch_size}_lr{config.learning_rate}_w{w[0]}-{w[1]}-{w[2]}-{w[3]}_modFACE_norm_sim_loss_{num_epochs}epochs"
 
 # load dataset
-dataset = build_pretrain_dataset(config, dataset_path=train_dataset_path, input_min_text_length=min_input_length, input_max_text_length=max_input_length, size=train_set_size)
-dev_dataset = build_pretrain_dataset(config, dataset_path=dev_dataset_path, input_min_text_length=min_input_length, input_max_text_length=max_input_length, size=dev_set_size)
+dataset = build_conv_pretrain_dataset(config, dataset_path=train_dataset_path, input_min_text_length=min_input_length, input_max_text_length=max_input_length, size=train_set_size)
+dev_dataset = build_conv_pretrain_dataset(config, dataset_path=dev_dataset_path, input_min_text_length=min_input_length, input_max_text_length=max_input_length, size=dev_set_size)
 
 # dataloader
 train_dataloader = DataLoader(dataset, shuffle=True, batch_size=train_batch_size)
