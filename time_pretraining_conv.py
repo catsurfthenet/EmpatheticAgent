@@ -2,7 +2,7 @@ import pickle
 
 import torch
 import numpy as np
-from torch.optim.lr_scheduler import ExponentialLR, CosineAnnealingLR
+from torch.optim.lr_scheduler import ExponentialLR, CosineAnnealingLR, CosineAnnealingWarmRestarts
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, pipeline, AutoModelForSequenceClassification, \
     RobertaTokenizerFast, RobertaForSequenceClassification, BertModel, BertTokenizer
 from trl import PPOConfig
@@ -20,11 +20,11 @@ import time
 load_path_prefix = ""
 config = PPOConfig(
     model_name=f"{load_path_prefix}models/local-facebook-blenderbot-400M-distill",
-    learning_rate=5e-7, # empathy: 5e-7, ts2000; time_test: 1e-6, ts5000
+    learning_rate=1e-6, # empathy: 5e-7, ts2000; time_test: 1e-6, ts5000
 )
 SAVE_MODEL = True
 val = True
-num_epochs = 30 #80 (testing) #until 15-3 default: 30
+num_epochs = 50 #80 (testing) #until 15-3 default: 30
 #save_path_prefix = "pretraining_preprocessed_model"
 train_dataset_path = "modeldata/sp_token_context_ws_empathy_clean_count_top10_score0.4_emo_train_ED_dataset.p"#sp_token_ws_empathy_clean_count_top10_score0.4_emo_train_dialogue_dataset.p"
 dev_dataset_path = "modeldata/sp_token_context_ws_empathy_clean_count_top10_score0.4_emo_validation_ED_dataset.p"#ws_empathy_clean_prompt_emo_validation_dialogue_dataset.p"
@@ -34,19 +34,33 @@ train_batch_size = 16
 dev_batch_size = 8
 train_set_size = 2000 #2000 # all
 dev_set_size = 200 #160 #dev_batch_size
-optimiser_choice = "Adam"
+optimiser_choice = "AdamW"
 weight_decay = 1e-3
 checkpoint = 125 # once per epoch
-val_checkpoint = 62 # once per epoch
+val_checkpoint = 62 # twice per epoch
 #for train_set_size 5000: 32 #20 # dev_set_size / dev_batch_size
 
 
 device = torch.cuda.current_device() if torch.cuda.is_available() else "cpu"
 #device = torch.device("mps")
+"""
+Submitted ----
+(no model)
 
-weights = torch.tensor([0.5, 2, 1, 0.5, 1], device=device) #[nll, div, sim, emo] # default: 0.5, 1, 1.5, 0
+(with model)
+[1, 1, 1, 1, 1] 
+[1, 1, 1, 1, 0]
+[0.5, 1, 1, 1, 0]
+[0.5, 1, 1, 1, 1]
+[0.5, 2, 1, 1, 1]
+[0.5, 2, 2, 1, 1]
+not yet-----
+
+#[0.5, 2, 1, 0.5, 0]
+"""
+weights = torch.tensor([1, 2, 1, 1, 1], device=device) #[nll, div, sim, emo, ppl, (ngram_penalty)] # default: 0.5, 1, 1.5, 0
 w = weights
-model_save_path = f"FTM15-8-local_conv_LinearLR_{optimiser_choice}_wd{weight_decay}_vckp{val_checkpoint}_ED_ts{train_set_size}_bs{train_batch_size}_lr{config.learning_rate}_w{w[0]}-{w[1]}-{w[2]}-{w[3]}_modFACE_norm_sim_loss_{num_epochs}epochs"
+model_save_path = f"w{w[0]}-{w[1]}-{w[2]}-{w[3]}-{w[4]}_best_{num_epochs}epochs"#f"FTM15-8-local_conv_LinearLR_{optimiser_choice}_wd{weight_decay}_vckp{val_checkpoint}_ED_ts{train_set_size}_bs{train_batch_size}_lr{config.learning_rate}_w{w[0]}-{w[1]}-{w[2]}-{w[3]}-{w[4]}_FACE_norm_sim_loss_{num_epochs}epochs"
 
 # load dataset
 dataset = build_conv_pretrain_dataset(config, dataset_path=train_dataset_path, input_min_text_length=min_input_length, input_max_text_length=max_input_length, size=train_set_size)
@@ -61,6 +75,9 @@ model = AutoModelForSeq2SeqLM.from_pretrained(config.model_name, torch_dtype=tor
 tokenizer = AutoTokenizer.from_pretrained(config.model_name)
 tokenizer.pad_token = tokenizer.eos_token
 tokenizer.padding_side = "right"
+
+blenderbot_model = AutoModelForSeq2SeqLM.from_pretrained(config.model_name, torch_dtype=torch.float32).to(device)
+#blenderbot_model.resize_token_embeddings(len(tokenizer))
 
 # add special tokens
 emo_labels = ['sadness', 'disappointment', 'neutral', 'fear', 'nervousness', 'disapproval', 'realization', 'annoyance', 'grief', 'approval', 'caring', 'remorse', 'disgust', 'desire', 'love', 'anger', 'embarrassment', 'joy', 'admiration', 'relief', 'surprise', 'optimism', 'confusion', 'curiosity', 'amusement', 'excitement', 'gratitude', 'pride']
@@ -107,7 +124,7 @@ num_training_steps = num_epochs * len(train_dataloader)
 lr_scheduler = get_scheduler(
     name="linear", optimizer=optimizer, num_warmup_steps=0, num_training_steps=num_training_steps
 )
-#lr_scheduler = CosineAnnealingLR(optimizer=optimizer, T_max=125, eta_min=1e-10) #ExponentialLR(optimizer, gamma=0.9) #
+#lr_scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=125, eta_min=1e-10) #CosineAnnealingLR(optimizer=optimizer, T_max=125, eta_min=1e-10) #ExponentialLR(optimizer, gamma=0.9) #
 
 # track progress
 progress_bar = tqdm(range(num_training_steps))
@@ -184,9 +201,15 @@ for epoch in range(num_epochs):
         loss_logits = model_output.logits
         print(f"NLL loss: {nll_loss}")
 
+        ppl = 0
+        #ppl_loss = blenderbot_model(input_ids=response_tensors, labels=response_tensors)  # get loss
+        #ppl_loss = ppl_loss.loss
+        #ppl = float(torch.exp(ppl_loss).cpu().detach().numpy())
+
+
         # Calculate FACE, skip sp tokens
         div_loss = get_FACE_loss(token_freq, response_tensors, special_ids, loss_logits)
-        list_div_loss.append(div_loss.clone().detach().cpu())
+        list_div_loss.append(div_loss)
 
         emo_loss, mean_emo_loss = get_emo_counts(prompt_results, emo_results, cal_loss=True)
         target_txt = tokenizer.batch_decode(target_ids, skip_special_tokens=True)
@@ -204,8 +227,9 @@ for epoch in range(num_epochs):
                               target_embeddings[e]) - 1)  # [-1, 1(identical)] - 1 -> [-2, 0] -> [2, 0]
         norm_sim_loss = sum(sim_loss) / (len(sim_loss) * len(response_tensors))
 
+
         #loss = weights[0] * nll_loss + weights[1] * div_loss + weights[2] * mean_emo_loss
-        loss = weights[0] * nll_loss + weights[1] * div_loss + weights[2] * (norm_sim_loss.to(device)) + weights[3] * mean_emo_loss + w[4] * ngram_penalty(all_gen_resp, 4)
+        loss = weights[0] * nll_loss + weights[1] * div_loss + weights[2] * (norm_sim_loss.to(device)) + weights[3] * mean_emo_loss + w[4] * ppl #w[5] *ngram_penalty(all_gen_resp, 4) +
         print(f"Weighted loss: {loss}")
         loss_copy = loss.clone().detach().cpu()
         list_loss.append(loss_copy)
@@ -256,7 +280,7 @@ for epoch in range(num_epochs):
 
                 # response_tensors = pad_sequence(response_tensors, batch_first=True)
                 # target_ids = pad_sequence(target_ids, batch_first=True)
-                resp_w_sp_token = torch.stack(resp_w_sp_token)
+                resp_w_sp_token = torch.stack(resp_w_sp_token).to(device)
                 model_output = model(input_ids=resp_w_sp_token, labels=target_ids)
                 target_txt = tokenizer.batch_decode(target_ids, skip_special_tokens=True)
                 bert_output_token = \
@@ -274,6 +298,11 @@ for epoch in range(num_epochs):
                 norm_sim_loss = sum(sim_loss) / (len(sim_loss) * len(response_tensors))
                 nll_loss = model_output.loss  # nll loss
 
+                ppl = 0
+                #ppl_loss = blenderbot_model(input_ids=response_tensors, labels=response_tensors)  # get loss
+                #ppl_loss = ppl_loss.loss
+                #ppl = float(torch.exp(ppl_loss).cpu().detach().numpy())
+
                 loss_logits = model_output.logits
                 div_loss = get_FACE_loss(token_freq, response_tensors, special_ids, loss_logits)
                 """
@@ -288,7 +317,9 @@ for epoch in range(num_epochs):
                 """
 
                 emo_loss, mean_emo_loss = get_emo_counts(prompt_results, emo_results, cal_loss=True)#get_js_distance(prompt_results, emo_results)
-                dev_loss = weights[0] * nll_loss + weights[1] * div_loss + weights[2] * norm_sim_loss.to(device) + weights[3] * mean_emo_loss
+                #dev_loss = weights[0] * nll_loss + weights[1] * div_loss + weights[2] * norm_sim_loss.to(device) + weights[3] * mean_emo_loss
+                dev_loss = weights[0] * nll_loss + weights[1] * div_loss + weights[2] * (norm_sim_loss.to(device)) + \
+                       weights[3] * mean_emo_loss + w[4] * ppl #w[5]* ngram_penalty(all_gen_resp, 4)
                 dev_loss_copy = dev_loss.clone().detach().cpu()
                 list_dev_loss.append(dev_loss_copy)
                 batch_dev_loss.append(dev_loss_copy)
