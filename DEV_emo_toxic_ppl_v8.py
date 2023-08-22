@@ -73,8 +73,8 @@ SAVE_MODEL = False
 input_batch_size = 16 #24
 optimiser_choice = "Adam"
 reward_function = emo_count_ppl_toxic
-# define weights
 
+# define weights
 toxicity_weight = 0
 fluency_weight = 1 #1
 emp_weight = 1 #0
@@ -115,11 +115,9 @@ model_path = blenderbot #ppo_model#
 
 device = torch.cuda.current_device() if torch.cuda.is_available() else "cpu"
 #device = torch.device("mps")
-# We first define the configuration of the experiment, defining the model, the dataset,
-# the training parameters, and the PPO parameters.
-# Check the default arguments in the `PPOConfig` class for more details.
-# If you want to log with tensorboard, add the kwarg
-# `accelerator_kwargs={"logging_dir": PATH_TO_LOGS}` to the PPOConfig.
+
+# the below section is modified from a huggingface PPO usage example
+# https://github.com/huggingface/trl/blob/main/examples/research_projects/toxicity/scripts/gpt-j-6b-toxicity.py
 @dataclass
 class ScriptArguments:
     """
@@ -141,6 +139,17 @@ class ScriptArguments:
         metadata={"help": "the path to save the model"},
     )
 
+"""
+Padding function, pad tensors so that all tensors in list have same dimension
+
+Parameters:
+data: list of tensors
+    input to be padded
+    
+Return 
+padded: list of tensors
+    padded list of tensors
+"""
 def padding(data):
     padded = rnn_utils.pad_sequence(data)
     padded = list(map(torch.Tensor, padded.T))
@@ -149,6 +158,7 @@ def padding(data):
 parser = HfArgumentParser(ScriptArguments)
 script_args = parser.parse_args_into_dataclasses()[0]
 
+# configurations of PPO
 config = PPOConfig(
     model_name=script_args.model_name,
     steps=10000, # NO: 10k (more neg on all tests)
@@ -190,14 +200,11 @@ config = {
         "vf_coef":.1,
 }
 """
-# Below is an example function to build the dataset. In our case, we use the IMDB dataset
-# from the `datasets` library. One should customize this function to train the model on
-# its own dataset.
 
-# We retrieve the dataloader by calling the `build_dataset` function.
 min_input_length = 30
 max_input_length = 100
 
+# setup data loader using the `build_dataset_no_token` modified from the `build_dataset` function
 dataset = build_dataset_no_token(config, dataset_path=train_dataset_path, input_min_text_length=min_input_length, input_max_text_length=max_input_length, size=train_set_size)
 dev_dataset = build_dataset_no_token(config, dataset_path='modeldata/ws_empathy_clean_prompt_emo_validation_dialogue_dataset.p', input_min_text_length=min_input_length, input_max_text_length=max_input_length, size=dev_set_size)
 
@@ -222,23 +229,19 @@ dev_dataset = Dataset.from_dict(dev_dataset)
 fd.close()
 """
 #train_dataloader = DataLoader(dataset, batch_size=input_batch_size, shuffle=False)
+# data loader for validation dataset
 dev_dataloader = DataLoader(dev_dataset, batch_size=8, shuffle=False)
 
 def collator(data):
     return dict((key, [d[key] for d in data]) for key in data[0])
 
-
 # set seed before initializing value head for deterministic eval
 set_seed(config.seed)
 
-# Now let's build the model, the reference model, and the tokenizer. We first load the model
-# in bfloat16 to save memory using `transformers`.
+# load pretrained model
 model = AutoModelForSeq2SeqLM.from_pretrained(config.model_name, torch_dtype=torch.float32)
 
-#ref_model = create_reference_model(model)
-
-# We make sure to use `Adam` optimizer on the model parameters that require gradients.
-#criterion = torch.nn.CrossEntropyLoss()
+# setup optimiser according to the specified choice
 if optimiser_choice == "AdamW":
     optimizer = AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=config.learning_rate,
                       weight_decay=weight_decay)
@@ -247,7 +250,7 @@ elif optimiser_choice == "SGD":
 else: # use Adam as default
     optimizer = Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=config.learning_rate, maximize=optim_maximise)
 
-# only for this model.
+# load tokeniser depending on which pretained model is used
 if model_path == ppo_model:
     tokenizer = AutoTokenizer.from_pretrained(blenderbot)
 else:
@@ -273,7 +276,7 @@ tokenizer.padding_side = "right"
 # Pass the loaded model to `AutoModelForSeq2SeqLMWithValueHead`.
 model = AutoModelForSeq2SeqLMWithValueHead.from_pretrained(model)
 
-# We then build the PPOTrainer, passing the model, the reference model, the tokenizer
+# build PPOTrainer, create reference model by specifying the number of shared layers defined above
 ppo_trainer = PPOTrainer(
     config,
     model,
@@ -345,45 +348,48 @@ with open(f'{save_path_prefix}_score_train_output.txt', 'w') as f:
     for _ in range(epoch_num):
         for step, batch in tqdm(enumerate(ppo_trainer.dataloader)):
             torch.cuda.empty_cache()
-            #start_loop = time.time()
             query_tensors = tokenizer(batch["input_ids"], padding=True, max_length=128, truncation=True, add_special_tokens=True)["input_ids"]
             # Get response from the policy model
             query_tensors = [torch.tensor(q, device=device) for q in query_tensors] # need list of tensors
             response_tensors = ppo_trainer.generate(query_tensors, num_beams=3, min_new_tokens=10, max_new_tokens=40, **generation_kwargs)
+
+            # record output token frequency to include new tokens
             for r in response_tensors:
                 for token in r:
                     token_freq[int(token)] += 1
 
+            # decode response tokens
             og_response_tensors = response_tensors
             response_tensors = padding(response_tensors)
-
             batch["response"] = [tokenizer.decode(r.squeeze(), skip_special_tokens=True) for r in response_tensors]
 
             texts = batch["response"]
-            #prompts = [q.get("prompt").replace("</s>", "").replace("_comma_", ",") for q in batch["query"]]
             prompts = [q.replace("</s>", "").replace("_comma_", ",") for q in batch["input_ids"]]
             response_tensors_t = torch.stack(response_tensors).to(device)
-            # use ref_model, or other models
+
+            # use ref_model, or other models to calculate perplexity
             loss = blenderbot_model(input_ids=response_tensors_t, labels=response_tensors_t).loss # get loss
-            #loss = criterion()
             ppl = float(torch.exp(loss).cpu().detach().numpy())
             mean_ppl_list.append(ppl)
-            ppl = min(ppl, 1000) # clip perplexity to within 1,000
+            #ppl = min(ppl, 1000) # clip perplexity to within 1,000
             # rescale perplexity to between 1 and 1000
             # the experimental lowest value is around 4
-            ppl = 1 if (ppl < 5) else (ppl - 4)
-            inverse_ppl = 1 / ppl # inverse perplexity
-            #ppl_time = time.time()
-            #print(f"Get ppl in {ppl_time - decode_resp}")
+            #ppl = 1 if (ppl < 5) else (ppl - 4)
+
+            # calculate inverse perplexity
+            inverse_ppl = 1 / ppl
+            print(f"PPL: {ppl}, inverse ppl: {inverse_ppl}")
+
             score_list = []
-
-            # Compute sentiment score # noqa
-
             toxicity_results = []
+
+            # Compute emotion rewards and semantic rewards
+            # get emotion labels
             prompt_results = reward_classifier(prompts)
             emo_results = reward_classifier(texts)
-            ref_resp_emo = Dataset.from_list(batch["query"])["target_emo"]
 
+            # calculate BERT embedding similarity reward
+            ref_resp_emo = Dataset.from_list(batch["query"])["target_emo"]
             target_w_sp = Dataset.from_list(batch["query"])["target"]
             target_ids = tokenizer(target_w_sp, return_tensors="pt", padding=True, max_length=128, truncation=True, add_special_tokens=True)["input_ids"].to(device)
             target_txt = tokenizer.batch_decode(target_ids, skip_special_tokens=True)
@@ -396,62 +402,32 @@ with open(f'{save_path_prefix}_score_train_output.txt', 'w') as f:
                 sim_reward += cos(output_embeddings[e], target_embeddings[e])
             norm_sim_reward = float(sum(sim_reward) / (len(sim_reward) * len(texts)))
             current_match_reward = 0
-            #for r in range(len(ref_resp_emo)):
-            #    if emo_results[r][0]["label"] == ref_resp_emo[r]:
-            #        current_match_reward += (ref_gen_emo_match_reward * inverse_ppl)  #
-
-            #if toxicity_weight > 0:
-            #    toxicity_results = toxicity_classifier(texts)
-            #end_model_eval = time.time()
-            #print(f"3 Model evaluations in {end_model_eval - start_model_eval}")
-
-            print(f"PPL: {ppl}, inverse ppl: {inverse_ppl}")
             #score_list, _, _ = emo_dis_ppl(prompt_results, emo_results, inverse_ppl, weights=[emp_weight, fluency_weight])
 
+            # calculate emotion reward, save in score_list
             score_list, _, mean_emo_score, mean_toxic_score = reward_function(prompt_results, emo_results, inverse_ppl, toxicity_results, weights=[emp_weight, toxicity_weight, fluency_weight])
             mean_emo_list.append(mean_emo_score)
             mean_toxic_list.append(mean_toxic_score)
+
+            # calculate diversity reward
+            div_reward = get_FACE_reward(token_freq=token_freq, outputs=response_tensors_t, special_ids=special_ids)
+
+            #model_output = model(input_ids=response_tensors_t, labels=target_ids)
+            #nll_loss = model_output[1]  #logits # nll loss
+
+            # calculate weighted score
+            score_list = fluency_weight * inverse_ppl + score_list * emp_weight + div_weight * div_reward + norm_sim_reward * sim_weight #- 0.5 * float(nll_loss)
+
+            # record weighted score
+            mean_score = get_mean(score_list)
+            mean_score_list.append(mean_score)
+            rewards = [torch.tensor(output) for output in score_list]
 
             if max(score_list) > score_max:
                 score_max = max(score_list)
             if min(score_list) < score_min:
                 score_min = min(score_list)
-
-            #score_list = np.array([((x - 1e-15) if x == 1.0 else x) for x in score_list])
             print(f"Score min: {score_min}, score max: {score_max} \n")
-
-            #for r in range(len(ref_resp_emo)):
-            #    if emo_results[r][0]["label"] == ref_resp_emo[r]:
-                    #if counter < use_target_steps:
-                    #    current_match_reward += (ref_gen_emo_match_reward)
-                    #else:
-                    #score_list[r] += (ref_gen_emo_match_reward * reward_scale)
-            #        current_match_reward += (ref_gen_emo_match_reward * reward_scale) * inverse_ppl
-
-            #current_match_reward += get_FACE_reward(token_freq=token_freq, outputs=response_tensors_t, special_ids=special_ids)
-            div_reward = get_FACE_loss(token_freq=token_freq, outputs=response_tensors_t, special_ids=special_ids)
-            #div_reward = [1/d for d in div_reward]
-
-            current_match_reward += div_reward
-            #score_list = logit(score_list) + current_match_reward
-            model_output = model(input_ids=response_tensors_t, labels=target_ids)
-            nll_loss = model_output[1]  #logits # nll loss
-            score_list = fluency_weight * inverse_ppl + score_list * emp_weight + div_weight * div_reward + norm_sim_reward * sim_weight #- 0.5 * float(nll_loss)
-            #mean_emo_list.append(nll_loss)
-            """
-            for r in range(len(ref_resp_emo)):
-                if emo_results[r][0]["label"] == ref_resp_emo[r]:
-                    #if counter < use_target_steps:
-                    #    current_match_reward += (ref_gen_emo_match_reward)
-                    #else:
-                    score_list[r] += (ref_gen_emo_match_reward * reward_scale)
-                    #current_match_reward += (ref_gen_emo_match_reward * reward_scale)  # * inverse_ppl
-            """
-            mean_score = get_mean(score_list)
-            #mean_score = score_list
-            mean_score_list.append(mean_score)
-
-            rewards = [torch.tensor(output) for output in score_list] # change reward
 
             if counter % checkpoint == 0:
                 f.write(f"Score min: {score_min}, score max: {score_max}")
@@ -469,11 +445,8 @@ with open(f'{save_path_prefix}_score_train_output.txt', 'w') as f:
             stats = ppo_trainer.step(query_tensors, og_response_tensors, rewards)
             list_stats.append(stats)
             ppo_trainer.log_stats(stats, batch, rewards)
-            #end_ppo_step = time.time()
-            #print(f"PPO steps in {end_ppo_step - end_get_result}")
 
-
-            # Save model every 200 epochs if model has improved in performance
+            # get empathy ratio for record use, not used for rewards
             emp_results = empathy_classifier(texts, padding='max_length', truncation=True, max_length=512)
             emp_ratio = get_empathy_ratio(emp_results)
             list_emp_ratio.append(emp_ratio)
@@ -481,6 +454,7 @@ with open(f'{save_path_prefix}_score_train_output.txt', 'w') as f:
                 f"{counter} Empathy Ratio: no empathy {emp_ratio[0]}, weak empathy {emp_ratio[1]}, strong empathy {emp_ratio[2]}.\n")
             print(
                 f"{counter} Empathy Ratio: no empathy {emp_ratio[0]}, weak empathy {emp_ratio[1]}, strong empathy {emp_ratio[2]}.\n")
+
             # Save model every checkpoint
             if counter % checkpoint == 0 and SAVE_MODEL:
                 print(f"\nSaving model at step {step}. \n")
@@ -498,23 +472,23 @@ with open(f'{save_path_prefix}_score_train_output.txt', 'w') as f:
                     prompts = []
                     texts = []
                     ppl_list = []
+                    dev_response_tensors = []
 
-                    # for dev_query in dev_dataset:
                     for dev_batch in enumerate(dev_dataloader):
                         dev_query = dev_batch[1]
                         input_texts = dev_query["prompt"]
                         prompts += input_texts
                         # input_ids = tokenizer(input_texts, return_tensors="pt", padding='max_length', max_length=128,
                         #                      truncation=True).to(ppo_trainer.accelerator.device)
-                        input_ids = dev_query["input_ids"].to(ppo_trainer.accelerator.device)  # input_ids["input_ids"]
+                        input_ids = dev_query["input_ids"].to(ppo_trainer.accelerator.device)
                         for i in range(len(input_ids)):
                             q1 = input_ids[i].nonzero()[-1]
                             input_ids[i] = input_ids[i][:(q1 + 1)].unsqueeze(0)
 
+                        # generate response
                         outputs = ppo_trainer.model.generate(input_ids, do_sample=True, num_beams=10, max_new_tokens=40,
                                                              use_cache=True)
 
-                        # print("Generated output")
                         """
                         dev_input_ids = dev_query["input_ids"].to(device)#to(ppo_trainer.accelerator.device)
                         input_shape = dev_input_ids.size()
@@ -527,6 +501,9 @@ with open(f'{save_path_prefix}_score_train_output.txt', 'w') as f:
                         ppl = torch.exp(loss).cpu().detach().numpy()
                         ppl_list.append(ppl)
                         inverse_ppl = 1 / ppl
+
+                        dev_response_tensors.append(outputs)
+                        # decode response
                         dev_response = tokenizer.batch_decode(outputs, skip_special_tokens=True)
                         texts += dev_response
                         """
@@ -535,36 +512,56 @@ with open(f'{save_path_prefix}_score_train_output.txt', 'w') as f:
                         dev_BLEUscore = weighted_bleu_score(dev_target, dev_response)
                         BLEU_score_list.append(dev_BLEUscore)
                         """
-                    #dev_end_resp_gen = time.time()
-                    #print(f"Dev response generation time {dev_end_resp_gen - end_ppo_step}")
-                    #mean_bleu = sum(BLEU_score_list) / len(BLEU_score_list)
+
+                    # get mean of inverse perplexity
                     mean_ppl = get_mean(ppl_list)
-                    # calculate emo distribution
+
+                    # get emotion labels and calculate emotion rewards
                     prompt_results = reward_classifier(prompts)
                     emo_results = reward_classifier(texts)
                     toxicity_results = []
-                    #toxicity_results = toxicity_classifier(texts)
-                    list_current_score, list_emo_score, mean_emo_score, mean_toxic_score = reward_function(prompt_results, emo_results, inverse_ppl,toxicity_results, weights=[emp_weight, toxicity_weight, fluency_weight])
-                    #dev_end_score = time.time()
-                    #print(f"Dev get score in {dev_end_score - dev_end_resp_gen}")
+                    list_current_score, list_emo_score, mean_emo_score, mean_toxic_score = reward_function(prompt_results, emo_results, mean_ppl, toxicity_results, weights=[emp_weight, toxicity_weight, fluency_weight])
 
-                    # current_score = mean((emo_score * emp_weight) + (bleu * fluency_weight))
+                    # calculate BERT embedding similarity reward
+                    ref_resp_emo = Dataset.from_list(dev_batch["query"])["target_emo"]
+                    target_w_sp = Dataset.from_list(dev_batch["query"])["target"]
+                    target_ids = \
+                    tokenizer(target_w_sp, return_tensors="pt", padding=True, max_length=128, truncation=True,
+                              add_special_tokens=True)["input_ids"].to(device)
+                    target_txt = tokenizer.batch_decode(target_ids, skip_special_tokens=True)
+                    bert_output_token = \
+                    bert_tokenizer(texts, return_tensors="pt", padding='max_length', max_length=64, truncation=True)[
+                        "input_ids"].to(device)
+                    bert_target_token = \
+                    bert_tokenizer(target_txt, return_tensors="pt", padding='max_length', max_length=64,
+                                   truncation=True)["input_ids"].to(device)
+                    output_embeddings = bert_model.embeddings.word_embeddings(bert_output_token)
+                    target_embeddings = bert_model.embeddings.word_embeddings(bert_target_token)
+                    sim_reward = 0
+                    for e in range(len(output_embeddings)):
+                        sim_reward += cos(output_embeddings[e], target_embeddings[e])
+                    norm_sim_reward = float(sum(sim_reward) / (len(sim_reward) * len(texts)))
+
+                    # calculate diversity reward
+                    dev_response_tensors = padding(dev_response_tensors)
+                    dev_response_tensors = torch.stack(dev_response_tensors).to(device)
+                    div_reward = get_FACE_reward(token_freq=token_freq, outputs=dev_response_tensors,
+                                                 special_ids=special_ids)
+
+                    # calculate weighted score
+                    list_current_score = fluency_weight * mean_ppl + emp_weight * list_current_score + div_weight * div_reward + sim_weight * norm_sim_reward
                     current_score = sum(list_current_score) / len(list_current_score)
                     if current_score > best_score:
                         best_score = current_score
                         f.write(f"Mean perplexity of this step: {mean_ppl}. \n")
                         f.write(f"Mean Emo Score of this step: {mean_emo_score} \n")
                         f.write(f"Score of this step: {current_score}. \n")
-                        #dev_save_resp = time.time()
-                        #print(f"Dev save response in {dev_save_resp - dev_end_score}")
                 except Exception as err:
                     with open(f'{save_path_prefix}_error_log_empathy_score_epoch{step}.txt', 'w') as err_log:
                         err_log.write(f"Unexpected {err=}, {type(err)=}")
                     err_log.close()
-                #end_dev = time.time()
-                #print(f"Validation in {end_dev - end_ppo_step}")
-
             counter += 1
+
     # Save at last
     emp_results = empathy_classifier(texts, padding='max_length', truncation=True, max_length=512)
     emp_ratio = get_empathy_ratio(emp_results)
@@ -573,75 +570,15 @@ with open(f'{save_path_prefix}_score_train_output.txt', 'w') as f:
         f"{counter} Empathy Ratio: no empathy {emp_ratio[0]}, weak empathy {emp_ratio[1]}, strong empathy {emp_ratio[2]}.\n")
     print(
         f"{counter} Empathy Ratio: no empathy {emp_ratio[0]}, weak empathy {emp_ratio[1]}, strong empathy {emp_ratio[2]}.\n")
-    # Save model every checkpoint
-    if counter % checkpoint == 0 and SAVE_MODEL:
-        print(f"\nSaving model at step {step}. \n")
-        if ppo_trainer.accelerator.is_main_process:
-            round_ratio = [format(ratio, '.3f') for ratio in emp_ratio]
-            ppo_trainer.save_pretrained(
-                f"{model_save_path}-last-ratio{round_ratio[0]}-{round_ratio[1]}-{round_ratio[2]}-ppl{format(ppl, '.3f')}")
-        f.write(f"\nSaving model at step {counter}. \n")
-    # validate at very last ?
-    if DEV:
-        try:
-            print(f"Start validation for step {step} with counter {counter}.")
-            BLEU_score_list = []
-            prompts = []
-            texts = []
-            ppl_list = []
-            for dev_batch in enumerate(dev_dataloader):
-                # for dev_query in dev_dataset:
-                dev_query = dev_batch[1]
-                input_texts = dev_query["prompt"]
-                prompts += input_texts
-                input_ids = dev_query["input_ids"].to(ppo_trainer.accelerator.device)
-                # gen_len = output_length_sampler()
-                # generation_kwargs["max_new_tokens"] = gen_len
-                outputs = ppo_trainer.model.generate(input_ids, do_sample=True, max_new_tokens=40, use_cache=True)
-                loss = model(input_ids=outputs, labels=outputs)[1]
-                ppl = torch.exp(loss).cpu().detach().numpy()
-                ppl_list.append(ppl)
-                inverse_ppl = 1 / ppl
-                dev_response = tokenizer.batch_decode(outputs, skip_special_tokens=True)
-                texts += dev_response
-                """
-                dev_response = word_tokenize(dev_response[0])
-                dev_target = word_tokenize(dev_query["target"])
-                dev_BLEUscore = weighted_bleu_score(dev_target, dev_response)
-                BLEU_score_list.append(dev_BLEUscore)
-                """
 
-            #mean_bleu = sum(BLEU_score_list) / len(BLEU_score_list)
-            print("Start score calculation...")
-            toxicity_results = []
-            mean_ppl = sum(ppl_list) / len(ppl_list)
-            # calculate emo distribution
-            prompt_results = reward_classifier(prompts)
-            emo_results = reward_classifier(texts)
-            #if toxicity_weight > 0:
-            #    toxicity_results = toxicity_classifier(texts)
-            print("Got results for toxicity ")
-            list_current_score, list_emo_score, mean_emo_score, mean_toxic_score = reward_function(prompt_results, emo_results, inverse_ppl, toxicity_results, weights=[emp_weight, toxicity_weight, fluency_weight])
-            print("Update min and max score... ")
-            if max(list_current_score) > score_max:
-                score_max = max(list_current_score)
-            if min(list_current_score) < score_min:
-                score_min = min(list_current_score)
-            print("Write min and max score... ")
-            f.write(f"Score min: {score_min}, score max: {score_max}")
-            f.write(f"Score list: {list_current_score}")
-            """
-            list_emo_score, mean_emo_score = get_js_distance(prompt_results, emo_results)
-            BLEU_score_list = [(b) * fluency_weight for b in BLEU_score_list]
-            list_emo_score = [e * emp_weight for e in list_emo_score]
-            current_score = [sum(x) for x in zip(BLEU_score_list, list_emo_score)]
-            mean_score = sum(current_score) / len(current_score)
-            """
-            current_score = sum(list_current_score) / len(list_current_score)
-        except Exception as err:
-            with open(f'{save_path_prefix}_error_log_emo_probi_score_last.txt', 'w') as err_log:
-                err_log.write(f"Unexpected {err=}, {type(err)=}")
-            err_log.close()
+    print(f"\nSaving model at step {step}. \n")
+    if ppo_trainer.accelerator.is_main_process:
+        round_ratio = [format(ratio, '.3f') for ratio in emp_ratio]
+        ppo_trainer.save_pretrained(
+            f"{model_save_path}-last-ratio{round_ratio[0]}-{round_ratio[1]}-{round_ratio[2]}-ppl{format(ppl, '.3f')}")
+    f.write(f"\nSaving model at step {counter}. \n")
+
+    # save training data
     f3 = open(f"{save_path_prefix}_mean_score_list.p", 'wb')
     pickle.dump([mean_score_list, mean_emo_list, mean_toxic_list, mean_ppl_list, list_stats, list_emp_ratio], f3)
     f3.close()
