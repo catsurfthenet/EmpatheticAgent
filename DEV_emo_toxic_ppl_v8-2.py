@@ -70,37 +70,37 @@ tqdm.pandas()
 """ED: empathetic dialogues, RT: real toxic"""
 # define path and variables
 SAVE_MODEL = False
-input_batch_size = 16 #24
+input_batch_size = 4 #24
 optimiser_choice = "Adam"
 reward_function = emo_count_ppl_toxic
 
 # define weights
 toxicity_weight = 0
-fluency_weight = 2.5 #1 increase this?
+fluency_weight = 1 #1
 emp_weight = 1 #0
 div_weight = 1 #0
-sim_weight = 1.5
-w = [emp_weight, div_weight, sim_weight, fluency_weight]
+sim_weight = 1
+w = [emp_weight, div_weight, sim_weight]
 ref_gen_emo_match_reward = 0
 reward_scale = 1
 use_target_steps = 0
 optim_maximise = False
+episode_num = 1000
 
-lr = 1e-6#1e-5 #-9
+lr = 5e-5 #-9
 weight_decay = 0.001
 ppo_epoch_num = 4 #4
 DEV = False
 train_set_size = 2000 # -1 #3000
-dev_set_size = 100
+dev_set_size = 8
 checkpoint = 50
 epoch_num = 1 #1 # number of outer loops
 shared_layers = 4
 gamma = 1 #0.90
-episode_num = 250
 
 date = datetime.datetime.now()
 train_dataset_path = "modeldata/ws_empathy_clean_prompt_emo_train_dialogue_dataset.p" #'modeldata/emo_count_train_dialogue_dataset.p' #"modeldata/ws_empathy_clean_prompt_emo_train_dialogue_dataset.p"  #
-save_path_prefix = f"PPO{date.day}-{date.month}_eg_tKL2_ep{episode_num}_ED_ts{train_set_size}_outer{epoch_num}_inner{ppo_epoch_num}_share{shared_layers}_scale{reward_scale}_empathy_clean_count0.4_inll{w[3]}_emoCount{w[0]}_FACE{w[1]}_bertSim{w[2]}_{optimiser_choice}_bs{input_batch_size}_lr{lr}_gamma{gamma}" #"DEV_lr-7_ppl_toxic_w4-6-0" #"DEV-mimic-lr-6-ppl-toxic" # "DEV_SGD_lr-9_emo_toxic_w6-4-0"
+save_path_prefix = f"PPO{date.day}-{date.month}_ED_ts{train_set_size}_ep{episode_num}_inner{ppo_epoch_num}_share{shared_layers}_scale{reward_scale}_empathy_clean_count0.4_emoDis{w[0]}_FACE{w[1]}_bertSim{w[2]}_{optimiser_choice}_bs{input_batch_size}_lr{lr}_gamma{gamma}" #"DEV_lr-7_ppl_toxic_w4-6-0" #"DEV-mimic-lr-6-ppl-toxic" # "DEV_SGD_lr-9_emo_toxic_w6-4-0"
 load_path_prefix = ""
 ppo_model = f"{load_path_prefix}w0.5-2.0-1.0-1.0-1.0_best_50epochs-3750-loss1.01517"
 
@@ -166,12 +166,12 @@ config = PPOConfig(
     learning_rate=script_args.learning_rate, #5e-6,#
     adap_kl_ctrl=True,
     init_kl_coef=0.2, # NO: 0.05
-    target=2, #3
+    target=3,
     horizon=10000, #
     gamma=1,#gamma,
     #lam=0.95,
-    cliprange=0.2, #.2
-    cliprange_value=0.2, #.2
+    cliprange=0.2,
+    cliprange_value=0.2,
     vf_coef=.1,
     log_with=script_args.log_with,
     ppo_epochs=4,#ppo_epoch_num,
@@ -207,6 +207,7 @@ max_input_length = 100
 
 # setup data loader using the `build_dataset_no_token` modified from the `build_dataset` function
 dataset = build_dataset_no_token(config, dataset_path=train_dataset_path, input_min_text_length=min_input_length, input_max_text_length=max_input_length, size=train_set_size)
+
 dev_dataset = build_dataset_no_token(config, dataset_path='modeldata/ws_empathy_clean_prompt_emo_validation_dialogue_dataset.p', input_min_text_length=min_input_length, input_max_text_length=max_input_length, size=dev_set_size)
 
 """
@@ -302,7 +303,7 @@ reward_model_id = f"{load_path_prefix}models/local-SamLowe-roberta-base-go_emoti
 #emo_model = AutoModelForSequenceClassification.from_pretrained(reward_model_id, torch_dtype=torch.float32).to(
 #    ppo_trainer.accelerator.device
 #)
-reward_classifier = pipeline('text-classification', model=reward_model_id, tokenizer=reward_model_id, max_length=128, truncation=True, top_k=None, device=0) #, device=0
+reward_classifier = pipeline('text-classification', model=reward_model_id, tokenizer=reward_model_id, max_length=128, truncation=True, top_k=None, device=0) #
 
 #if toxicity_weight > 0:
 emp_classifier_model = f"{load_path_prefix}models/roberta-empathy-03-06-2023-18_21_58"
@@ -312,7 +313,7 @@ empathy_model = RobertaForSequenceClassification.from_pretrained(empathy_model_i
     device)
 # change
 empathy_classifier = pipeline('text-classification', model=empathy_model, tokenizer=empathy_tokenizer,
-                              max_length=512, truncation=True, device=0) #
+                              max_length=512, truncation=True, device=0) #, device=0
 
 bert_model = BertModel.from_pretrained(f"{load_path_prefix}models/local-bert-base-uncased").to(device)
 bert_tokenizer = BertTokenizer.from_pretrained(f"{load_path_prefix}models/local-bert-base-uncased")
@@ -325,7 +326,7 @@ generation_kwargs = {
     "min_length": -1,
     "top_k": 0.0, #0.0
     "top_p": 1.0,
-    "do_sample": True,
+    "do_sample": False,
     "pad_token_id": tokenizer.eos_token_id,
 }
 output_min_length = 20 #20
@@ -347,15 +348,15 @@ input_size = LengthSampler(min_input_length, max_input_length)
 #init = time.time()
 with open(f'{save_path_prefix}_score_train_output.txt', 'w') as f:
     for _ in range(epoch_num):
-        # for step, batch in tqdm(enumerate(ppo_trainer.dataloader)):
-        for ep in range(episode_num):
+        for _ in range(episode_num):
+        #for step, batch in tqdm(enumerate(ppo_trainer.dataloader)):
             torch.cuda.empty_cache()
-            ep_data = dataset.shuffle(seed=ep).select(range(16))
+            ep_data = dataset.shuffle(seed=counter).select(range(16))
             batch = ep_data
-            query_tensors = tokenizer(batch["input_ids"], padding=True, max_length=128, truncation=True, add_special_tokens=True)["input_ids"]
+            query_tensors = tokenizer(ep_data["input_ids"], padding=True, max_length=128, truncation=True, add_special_tokens=True)["input_ids"]
             # Get response from the policy model
             query_tensors = [torch.tensor(q, device=device) for q in query_tensors] # need list of tensors
-            response_tensors = ppo_trainer.generate(query_tensors, num_beams=3, min_new_tokens=10, max_new_tokens=100, **generation_kwargs)
+            response_tensors = ppo_trainer.generate(query_tensors, num_beams=3, min_new_tokens=6, **generation_kwargs) #max_new_tokens=40,
 
             # record output token frequency to include new tokens
             for r in response_tensors:
@@ -372,13 +373,9 @@ with open(f'{save_path_prefix}_score_train_output.txt', 'w') as f:
             prompts = [q.replace("</s>", "").replace("_comma_", ",") for q in batch["input_ids"]]
             response_tensors_t = torch.stack(response_tensors).to(device)
 
-            # get target token ids
-            target_txt = [q.get("target") for q in batch["query"]]
-            target_ids = tokenizer(target_txt, return_tensors="pt", padding=True, max_length=128, truncation=True, add_special_tokens=True)["input_ids"].to(device)
-
+            """
             # use ref_model, or other models to calculate perplexity
             loss = blenderbot_model(input_ids=response_tensors_t, labels=response_tensors_t).loss # get loss
-            nll_loss = model(input_ids=response_tensors_t, labels=target_ids)[1].cpu().detach().numpy() # (logit, loss, ?)
             ppl = float(torch.exp(loss).cpu().detach().numpy())
             mean_ppl_list.append(ppl)
             #ppl = min(ppl, 1000) # clip perplexity to within 1,000
@@ -426,7 +423,22 @@ with open(f'{save_path_prefix}_score_train_output.txt', 'w') as f:
             #nll_loss = model_output[1]  #logits # nll loss
 
             # calculate weighted score
-            score_list = fluency_weight * (1/nll_loss) + emp_weight * np.array(score_list) + div_weight * div_reward + norm_sim_reward * sim_weight #- 0.5 * float(nll_loss)
+            score_list = fluency_weight * inverse_ppl + emp_weight * np.array(score_list) + div_weight * div_reward + norm_sim_reward * sim_weight #- 0.5 * float(nll_loss)
+            """
+            score_list = [] # token of "sorry" = 2016
+            for t in texts:
+                if len(t) > 60:
+                    reward = -10
+                elif len(t) < 15:
+                    reward = 35.0
+                else:
+                    reward = -10.0 + float(60 - len(t))#1.0
+                #reward = float(len(t))
+                score_list.append(reward)
+                #if 2016 in o:
+                #    score_list.append(2)
+                #else:
+                #    score_list.append(-0.5)
 
             # record weighted score
             mean_score = get_mean(score_list)
@@ -441,7 +453,7 @@ with open(f'{save_path_prefix}_score_train_output.txt', 'w') as f:
 
             if counter % checkpoint == 0:
                 f.write(f"Score min: {score_min}, score max: {score_max}")
-                f.write(f"Episode: {ep}, best score: {best_score} \n")
+                f.write(f"Counter: {counter}, best score: {best_score} \n")
                 for q in range(len(batch["query"])):
                     query = batch["query"][q].get("prompt").replace("</s>", "").replace("_comma_", ",").replace("<pad>", "")
                     response = texts[q]
@@ -461,24 +473,23 @@ with open(f'{save_path_prefix}_score_train_output.txt', 'w') as f:
             emp_ratio = get_empathy_ratio(emp_results)
             list_emp_ratio.append(emp_ratio)
             f.write(
-                f"{ep} Empathy Ratio: no empathy {emp_ratio[0]}, weak empathy {emp_ratio[1]}, strong empathy {emp_ratio[2]}.\n")
+                f"{counter} Empathy Ratio: no empathy {emp_ratio[0]}, weak empathy {emp_ratio[1]}, strong empathy {emp_ratio[2]}.\n")
             print(
-                f"{ep} Empathy Ratio: no empathy {emp_ratio[0]}, weak empathy {emp_ratio[1]}, strong empathy {emp_ratio[2]}.\n")
+                f"{counter} Empathy Ratio: no empathy {emp_ratio[0]}, weak empathy {emp_ratio[1]}, strong empathy {emp_ratio[2]}.\n")
 
-            counter += 1
             # Save model every checkpoint
-            if ep % checkpoint == 0 and SAVE_MODEL:
-                print(f"\nSaving model at episode {ep}. \n")
+            if counter % checkpoint == 0 and SAVE_MODEL:
+                print(f"\nSaving model at step {counter}. \n")
                 if ppo_trainer.accelerator.is_main_process:
                     round_ratio = [format(ratio, '.3f') for ratio in emp_ratio]
                     ppo_trainer.save_pretrained(
-                        f"{model_save_path}-ep{ep}-ratio{round_ratio[0]}-{round_ratio[1]}-{round_ratio[2]}-ppl{format(ppl, '.3f')}")
-                f.write(f"\nSaving model at episode {ep}. \n")
+                        f"{model_save_path}-step{counter}-ratio{round_ratio[0]}-{round_ratio[1]}-{round_ratio[2]}-ppl{format(ppl, '.3f')}")
+                f.write(f"\nSaving model at step {counter}. \n")
 
-            if ep % checkpoint == 0 and DEV:
+            if counter % checkpoint == 0 and DEV:
                 # validate
                 try:
-                    print(f"Start validation for epoch {counter} with counter {counter}.")
+                    print(f"Start validation for counter {counter}.")
                     BLEU_score_list = []
                     prompts = []
                     texts = []
@@ -571,7 +582,7 @@ with open(f'{save_path_prefix}_score_train_output.txt', 'w') as f:
                     with open(f'{save_path_prefix}_error_log_empathy_score_epoch{counter}.txt', 'w') as err_log:
                         err_log.write(f"Unexpected {err=}, {type(err)=}")
                     err_log.close()
-
+            counter += 1
 
     # Save at last
     emp_results = empathy_classifier(texts, padding='max_length', truncation=True, max_length=512)
@@ -582,11 +593,11 @@ with open(f'{save_path_prefix}_score_train_output.txt', 'w') as f:
     print(
         f"{counter} Empathy Ratio: no empathy {emp_ratio[0]}, weak empathy {emp_ratio[1]}, strong empathy {emp_ratio[2]}.\n")
 
-    print(f"\nSaving model at counter {counter}. \n")
+    print(f"\nSaving model at step {counter}. \n")
     if ppo_trainer.accelerator.is_main_process:
         round_ratio = [format(ratio, '.3f') for ratio in emp_ratio]
         ppo_trainer.save_pretrained(
-            f"{model_save_path}-last-ratio{round_ratio[0]}-{round_ratio[1]}-{round_ratio[2]}-ppl{format(ppl, '.3f')}")
+            f"{model_save_path}-last-ratio{round_ratio[0]}-{round_ratio[1]}-{round_ratio[2]}") #-ppl{format(ppl, '.3f')}
     f.write(f"\nSaving model at step {counter}. \n")
 
     # save training data
