@@ -4,7 +4,7 @@ import torch
 import numpy as np
 from torch.optim.lr_scheduler import ExponentialLR, CosineAnnealingLR, CosineAnnealingWarmRestarts
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, pipeline, AutoModelForSequenceClassification, \
-    RobertaTokenizerFast, RobertaForSequenceClassification, BertModel, BertTokenizer
+    RobertaTokenizerFast, RobertaForSequenceClassification, BertModel, BertTokenizer, AutoModelForCausalLM
 from trl import PPOConfig
 from helper import build_train_dataset, build_pad_dataset, padding, build_pretrain_dataset, get_mean, get_emo_counts, \
     get_js_distance, get_FACE_loss, ngram_penalty, build_conv_pretrain_dataset
@@ -13,16 +13,18 @@ from torch.optim import Adam, AdamW, SGD
 from transformers import get_scheduler
 from tqdm import tqdm
 from torch.nn.utils.rnn import pad_sequence
+import torch.nn.functional as F
 
 # define hyperparameters and variables
+model_id = "EleutherAI/gpt-neo-125m"#  #"microsoft/DialoGPT-small",
 load_path_prefix = ""
 config = PPOConfig(
-    model_name=f"{load_path_prefix}models/local-facebook-blenderbot-400M-distill",
+    model_name=model_id, #f"{load_path_prefix}models/local-facebook-blenderbot-400M-distill",
     learning_rate=1e-6,
 )
 SAVE_MODEL = True
 val = True
-num_epochs = 10
+num_epochs = 30
 train_dataset_path = "modeldata/sp_token_context_ws_empathy_clean_count_top10_score0.4_emo_train_ED_dataset.p"#sp_token_ws_empathy_clean_count_top10_score0.4_emo_train_dialogue_dataset.p"
 dev_dataset_path = "modeldata/sp_token_context_ws_empathy_clean_count_top10_score0.4_emo_validation_ED_dataset.p"#ws_empathy_clean_prompt_emo_validation_dialogue_dataset.p"
 min_input_length = 20
@@ -40,9 +42,9 @@ device = torch.cuda.current_device() if torch.cuda.is_available() else "cpu"
 #device = torch.device("mps")
 
 # set weights
-weights = torch.tensor([1, 2, 1, 1, 1], device=device) #[nll, div, sim, emo, ppl]
+weights = torch.tensor([1, 1, 1, 1, 0], device=device) #[nll, div, sim, emo, ppl]
 w = weights
-model_save_path = f"w{w[0]}-{w[1]}-{w[2]}-{w[3]}-{w[4]}_best_{num_epochs}epochs"#f"FTM15-8-local_conv_LinearLR_{optimiser_choice}_wd{weight_decay}_vckp{val_checkpoint}_ED_ts{train_set_size}_bs{train_batch_size}_lr{config.learning_rate}_w{w[0]}-{w[1]}-{w[2]}-{w[3]}-{w[4]}_FACE_norm_sim_loss_{num_epochs}epochs"
+model_save_path = f"GPTNeo_{num_epochs}epochs"#f"w{w[0]}-{w[1]}-{w[2]}-{w[3]}-{w[4]}_{num_epochs}epochs"#f"FTM15-8-local_conv_LinearLR_{optimiser_choice}_wd{weight_decay}_vckp{val_checkpoint}_ED_ts{train_set_size}_bs{train_batch_size}_lr{config.learning_rate}_w{w[0]}-{w[1]}-{w[2]}-{w[3]}-{w[4]}_FACE_norm_sim_loss_{num_epochs}epochs"
 
 # load dataset
 dataset = build_conv_pretrain_dataset(config, dataset_path=train_dataset_path, input_min_text_length=min_input_length, input_max_text_length=max_input_length, size=train_set_size)
@@ -53,12 +55,22 @@ train_dataloader = DataLoader(dataset, shuffle=True, batch_size=train_batch_size
 eval_dataloader = DataLoader(dev_dataset, batch_size=dev_batch_size)
 
 # load model and tokenizer
-model = AutoModelForSeq2SeqLM.from_pretrained(config.model_name, torch_dtype=torch.float32).to(device)
+if config.model_name == "microsoft/DialoGPT-small" or config.model_name == "EleutherAI/gpt-neo-125m":
+    model = AutoModelForCausalLM.from_pretrained(config.model_name, device_map={"": device}, torch_dtype=torch.float32).to(
+        device)
+    blenderbot_model = AutoModelForCausalLM.from_pretrained(config.model_name, torch_dtype=torch.float32).to(device)
+else:
+    model = AutoModelForSeq2SeqLM.from_pretrained(config.model_name, torch_dtype=torch.float32).to(device)
+    blenderbot_model = AutoModelForSeq2SeqLM.from_pretrained(config.model_name, torch_dtype=torch.float32).to(device)
 tokenizer = AutoTokenizer.from_pretrained(config.model_name)
 tokenizer.pad_token = tokenizer.eos_token
-tokenizer.padding_side = "right"
+if config.model_name == "microsoft/DialoGPT-small" or config.model_name == "EleutherAI/gpt-neo-125m":
+    tokenizer.sep_token = "</s>"
+    tokenizer.padding_side = "left"
+else:
+    tokenizer.padding_side = "right"
 
-blenderbot_model = AutoModelForSeq2SeqLM.from_pretrained(config.model_name, torch_dtype=torch.float32).to(device)
+
 
 # add special tokens
 emo_labels = ['sadness', 'disappointment', 'neutral', 'fear', 'nervousness', 'disapproval', 'realization', 'annoyance', 'grief', 'approval', 'caring', 'remorse', 'disgust', 'desire', 'love', 'anger', 'embarrassment', 'joy', 'admiration', 'relief', 'surprise', 'optimism', 'confusion', 'curiosity', 'amusement', 'excitement', 'gratitude', 'pride']
@@ -78,7 +90,7 @@ token_freq = dict(zip(token_ids, zeros))
 emo_model_id = f"{load_path_prefix}models/local-SamLowe-roberta-base-go_emotions"
 emo_tokenizer = AutoTokenizer.from_pretrained(emo_model_id)
 emo_model = AutoModelForSequenceClassification.from_pretrained(emo_model_id, torch_dtype=torch.float32).to(device)
-emo_classifier = pipeline('text-classification', model=emo_model_id, tokenizer=emo_model_id, max_length=128, truncation=True, top_k=None, device=0) #, device=0
+emo_classifier = pipeline('text-classification', model=emo_model_id, tokenizer=emo_model_id, max_length=128, truncation=True, top_k=None, device=0) #
 
 # load BERT model
 bert_model = BertModel.from_pretrained(f"{load_path_prefix}models/local-bert-base-uncased").to(device)
@@ -114,7 +126,7 @@ generation_kwargs = {
     "pad_token_id": tokenizer.eos_token_id,
 }
 
-# initialise training and validation to be recorded
+# initialise training and validation related losses to be recorded
 counter = 0
 list_loss = []
 list_checkpt_train_loss = []
@@ -125,13 +137,14 @@ all_gen_resp = []
 for epoch in range(num_epochs):
     print(f"Start training epoch {epoch}... ")
     for batch in train_dataloader:
+        torch.cuda.empty_cache()
         query_tensors = tokenizer(batch["prompt"], return_tensors="pt", padding=True, max_length=128, truncation=True, add_special_tokens=True)["input_ids"].to(device)
         target_ids = []
         list_prompt_texts, list_gen_texts = [], []
         # get responses
         response_tensors = model.generate(query_tensors, num_beams=3, min_new_tokens=4,
                                           max_new_tokens=40, **generation_kwargs)
-        # record new tokens
+        # record output token frequency to include new tokens
         for r in response_tensors:
             for token in r:
                 token_freq[int(token)] += 1
@@ -174,6 +187,15 @@ for epoch in range(num_epochs):
 
         # use special token prepended response to calculate NLL loss with target response (has special tokens)
         resp_w_sp_token = torch.stack(resp_w_sp_token)
+        if config.model_name == "microsoft/DialoGPT-small" or config.model_name == "EleutherAI/gpt-neo-125m":
+            r_size = resp_w_sp_token.size(1)
+            t_size = target_ids.size(1)
+            if r_size > t_size:
+                target_ids = F.pad(target_ids, (r_size - t_size, 0))
+            else:
+                resp_w_sp_token = F.pad(resp_w_sp_token, (t_size - r_size, 0))
+        #print("R: ", resp_w_sp_token.size(1))
+        #print("T:", target_ids.size(1))
         model_output = model(input_ids=resp_w_sp_token, labels=target_ids)
         nll_loss = model_output.loss  # nll loss
         loss_logits = model_output.logits
@@ -181,9 +203,9 @@ for epoch in range(num_epochs):
 
         # get perplexity
         ppl = 0
-        ppl_loss = blenderbot_model(input_ids=response_tensors, labels=response_tensors)  # get loss
-        ppl_loss = ppl_loss.loss
-        ppl = float(torch.exp(ppl_loss).cpu().detach().numpy())
+        #ppl_loss = blenderbot_model(input_ids=response_tensors, labels=response_tensors)  # get loss
+        #ppl_loss = ppl_loss
+        #ppl = float(torch.exp(ppl_loss.loss).cpu().detach().numpy())
 
         # calculate FACE, skip sp tokens
         div_loss = get_FACE_loss(token_freq, response_tensors, special_ids, loss_logits)
@@ -265,6 +287,13 @@ for epoch in range(num_epochs):
 
                 # use response with special tokens to calculate NLL loss with target
                 resp_w_sp_token = torch.stack(resp_w_sp_token).to(device)
+                if config.model_name == "microsoft/DialoGPT-small" or config.model_name == "EleutherAI/gpt-neo-125m":
+                    r_size = resp_w_sp_token.size(1)
+                    t_size = target_ids.size(1)
+                    if r_size > t_size:
+                        target_ids = F.pad(target_ids, (r_size - t_size, 0))
+                    else:
+                        resp_w_sp_token = F.pad(resp_w_sp_token, (t_size - r_size, 0))
                 model_output = model(input_ids=resp_w_sp_token, labels=target_ids)
                 nll_loss = model_output.loss  # nll loss
 
@@ -286,9 +315,9 @@ for epoch in range(num_epochs):
 
                 # calculate perplexity
                 ppl = 0
-                ppl_loss = blenderbot_model(input_ids=response_tensors, labels=response_tensors)  # get loss
-                ppl_loss = ppl_loss.loss
-                ppl = float(torch.exp(ppl_loss).cpu().detach().numpy())
+                #ppl_loss = blenderbot_model(input_ids=response_tensors, labels=response_tensors)  # get loss
+                #ppl_loss = ppl_loss.loss
+                #ppl = float(torch.exp(ppl_loss).cpu().detach().numpy())
 
                 # calculate FACE loss
                 loss_logits = model_output.logits
