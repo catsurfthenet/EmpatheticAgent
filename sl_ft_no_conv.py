@@ -20,34 +20,31 @@ import time
 load_path_prefix = ""
 config = PPOConfig(
     model_name=f"{load_path_prefix}models/local-facebook-blenderbot-400M-distill",
-    learning_rate=1e-6, # empathy: 5e-7, ts2000; time_test: 1e-6, ts5000
+    learning_rate=1e-6,
 )
 SAVE_MODEL = True
 val = True
-num_epochs = 50#30 #80 (testing) #until 15-3 default: 30
-#save_path_prefix = "pretraining_preprocessed_model"
+num_epochs = 50
 train_dataset_path = "modeldata/sp_token_ws_empathy_clean_count_top10_score0.4_emo_train_ED_dataset.p"#sp_token_ws_empathy_clean_count_top10_score0.4_emo_train_ED_dataset.p #sp_token_ws_empathy_clean_count_top10_score0.4_emo_train_dialogue_dataset.p"
 dev_dataset_path = "modeldata/sp_token_ws_empathy_clean_count_top10_score0.4_emo_validation_ED_dataset.p"#ws_empathy_clean_prompt_emo_validation_dialogue_dataset.p"
 min_input_length = 20
 max_input_length = 100
 train_batch_size = 16
 dev_batch_size = 8
-train_set_size = 2000 #2000 # all
-dev_set_size = 200 #160 #dev_batch_size
+train_set_size = 2000
+dev_set_size = 200
 optimiser_choice = "AdamW"
 weight_decay = 1e-3
 checkpoint = 125 # once per epoch
 val_checkpoint = 62 # twice per epoch
-#for train_set_size 5000: 32 #20 # dev_set_size / dev_batch_size
-
 
 device = torch.cuda.current_device() if torch.cuda.is_available() else "cpu"
 #device = torch.device("mps")
 
 # set weights
-weights = torch.tensor([1, 1, 1, 1, 0], device=device) #[nll, div, sim, emo, ppl] # default: 0.5, 1, 1.5, 0
+weights = torch.tensor([1, 1, 1, 1, 0], device=device) #[nll, div, sim, emo, ppl]
 w = weights
-model_save_path = f"no_conv_{num_epochs}epochs"#f"FTM17-8-local_LinearLR_{optimiser_choice}_vckp{val_checkpoint}_AM_ts{train_set_size}_bs{train_batch_size}_lr{config.learning_rate}_w{w[0]}-{w[1]}-{w[2]}-{w[3]}-{w[4]}_FACE_norm_sim_loss_{num_epochs}epochs"
+model_save_path = f"ED_{num_epochs}epochs"
 
 # load dataset
 dataset = build_pretrain_dataset(config, dataset_path=train_dataset_path, input_min_text_length=min_input_length, input_max_text_length=max_input_length, size=train_set_size)
@@ -113,7 +110,7 @@ model.train()
 
 generation_kwargs = {
     "min_length": -1,
-    "top_k": 0.0, #0.0
+    "top_k": 0.0,
     "top_p": 1.0,
     "do_sample": True,
     "pad_token_id": tokenizer.eos_token_id,
