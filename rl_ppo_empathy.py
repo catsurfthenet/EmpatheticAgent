@@ -47,7 +47,8 @@ from scipy.special import softmax
 from helper import (build_dataset, build_pad_dataset, build_train_dataset, get_mean,
                     weighted_bleu_score, get_js_distance, emo_dis_ppl, emo_dis_ppl_toxic,
                     load_toxicity_classifier, load_empathy_classifier, load_emo_classifier, emo_dis_bleu, append_scores,
-                    emo_count_ppl_toxic, get_empathy_ratio, build_dataset_no_token, get_FACE_reward, get_FACE_loss)
+                    emo_count_ppl_toxic, get_empathy_ratio, build_dataset_no_token, get_FACE_reward, get_FACE_loss,
+                    get_FACE_loss_mod)
 #from torch.utils.data import DataLoader
 tqdm.pandas()
 
@@ -76,17 +77,17 @@ reward_function = emo_count_ppl_toxic
 
 # define weights
 toxicity_weight = 0
-fluency_weight = 2.5 #1 increase this?
-emp_weight = 1 #0
-div_weight = 1 #0
-sim_weight = 1.5
+fluency_weight = 0.3 #1 increase this?
+emp_weight = 1.25 #0
+div_weight = 1.25 #0
+sim_weight = 1.25
 w = [emp_weight, div_weight, sim_weight, fluency_weight]
 ref_gen_emo_match_reward = 0
 reward_scale = 1
 use_target_steps = 0
 optim_maximise = False
 
-lr = 1e-6#1e-5 #-9
+lr = 1e-8#1e-5 #-9
 weight_decay = 0.001
 ppo_epoch_num = 4 #4
 DEV = False
@@ -94,13 +95,13 @@ train_set_size = 2000 # -1 #3000
 dev_set_size = 100
 checkpoint = 50
 epoch_num = 1 #1 # number of outer loops
-shared_layers = 4
+shared_layers = 9 #4
 gamma = 1 #0.90
-episode_num = 250
+episode_num = 2000 # 500~1000
 
 date = datetime.datetime.now()
 train_dataset_path = "modeldata/ws_empathy_clean_prompt_emo_train_dialogue_dataset.p" #'modeldata/emo_count_train_dialogue_dataset.p' #"modeldata/ws_empathy_clean_prompt_emo_train_dialogue_dataset.p"  #
-save_path_prefix = f"PPO{date.day}-{date.month}_eg_tKL2_ep{episode_num}_ED_ts{train_set_size}_outer{epoch_num}_inner{ppo_epoch_num}_share{shared_layers}_scale{reward_scale}_empathy_clean_count0.4_inll{w[3]}_emoCount{w[0]}_FACE{w[1]}_bertSim{w[2]}_{optimiser_choice}_bs{input_batch_size}_lr{lr}_gamma{gamma}" #"DEV_lr-7_ppl_toxic_w4-6-0" #"DEV-mimic-lr-6-ppl-toxic" # "DEV_SGD_lr-9_emo_toxic_w6-4-0"
+save_path_prefix = f"PPO{date.day}-{date.month}_eg_tKL1.5_ep{episode_num}_ED_ts{train_set_size}_outer{epoch_num}_inner{ppo_epoch_num}_share{shared_layers}_scale{reward_scale}_empathy_clean_count0.4_pnll{w[3]}_emoCount{w[0]}_FACE{w[1]}_bertSim{w[2]}_{optimiser_choice}_bs{input_batch_size}_lr{lr}_gamma{gamma}" #"DEV_lr-7_ppl_toxic_w4-6-0" #"DEV-mimic-lr-6-ppl-toxic" # "DEV_SGD_lr-9_emo_toxic_w6-4-0"
 load_path_prefix = ""
 ppo_model = f"{load_path_prefix}w0.5-2.0-1.0-1.0-1.0_best_50epochs-3750-loss1.01517"
 
@@ -166,7 +167,7 @@ config = PPOConfig(
     learning_rate=script_args.learning_rate, #5e-6,#
     adap_kl_ctrl=True,
     init_kl_coef=0.2, # NO: 0.05
-    target=2, #3
+    target=1.5, #3
     horizon=10000, #
     gamma=1,#gamma,
     #lam=0.95,
@@ -378,7 +379,9 @@ with open(f'{save_path_prefix}_score_train_output.txt', 'w') as f:
 
             # use ref_model, or other models to calculate perplexity
             loss = blenderbot_model(input_ids=response_tensors_t, labels=response_tensors_t).loss # get loss
-            nll_loss = model(input_ids=response_tensors_t, labels=target_ids)[1].cpu().detach().numpy() # (logit, loss, ?)
+            model_output = model(input_ids=response_tensors_t, labels=target_ids)
+            nll_loss = model_output[1].cpu().detach().numpy() # (logit, loss, ?)
+            loss_logits = model_output[0].cpu().detach().numpy()
             ppl = float(torch.exp(loss).cpu().detach().numpy())
             mean_ppl_list.append(ppl)
             #ppl = min(ppl, 1000) # clip perplexity to within 1,000
@@ -421,12 +424,13 @@ with open(f'{save_path_prefix}_score_train_output.txt', 'w') as f:
 
             # calculate diversity reward
             div_reward = get_FACE_reward(token_freq=token_freq, outputs=response_tensors_t, special_ids=special_ids)
+            #div_loss = get_FACE_loss_mod(token_freq, response_tensors, special_ids, loss_logits)
 
             #model_output = model(input_ids=response_tensors_t, labels=target_ids)
             #nll_loss = model_output[1]  #logits # nll loss
 
             # calculate weighted score
-            score_list = fluency_weight * (1/nll_loss) + emp_weight * np.array(score_list) + div_weight * div_reward + norm_sim_reward * sim_weight #- 0.5 * float(nll_loss)
+            score_list = fluency_weight * (-nll_loss) + emp_weight * np.array(score_list) + div_weight * (div_reward) + norm_sim_reward * sim_weight #- 0.5 * float(nll_loss)
 
             # record weighted score
             mean_score = get_mean(score_list)

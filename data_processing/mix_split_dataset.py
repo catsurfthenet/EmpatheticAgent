@@ -5,6 +5,7 @@ from datasets import Dataset, DatasetDict
 from helper import get_emo_counts, get_js_distance, load_emo_classifier
 import torch
 
+# code for creating a mixed dataset using multiple datasets
 top_count = 10
 threshold = 0.4
 load_path_prefix = '../'
@@ -18,7 +19,7 @@ val_size = 1000#1000
 test_size = 10000#2000
 
 
-train_dataset_path = f"{load_path_prefix}modeldata/sp_token_ws_empathy_clean_count_top10_score0.4_emo_train_dialogue_dataset.p"#sp_token_ws_empathy_clean_count_top10_score0.4_emo_train_EDOS_ED_dataset.p"
+train_dataset_path = f"{load_path_prefix}modeldata/sp_token_ws_empathy_clean_count_top10_score0.4_emo_AnnoMI_dataset.p"#sp_token_ws_empathy_clean_count_top10_score0.4_emo_train_EDOS_ED_dataset.p"
 with open(train_dataset_path, "rb") as f:
     [data] = pickle.load(f)
 edos_ed_ds = Dataset.from_dict(data)
@@ -44,9 +45,9 @@ cc_ds = Dataset.from_dict(data)
 cc_ds = cc_ds.shuffle(seed=seed).select(range(r[3] *size))
 """
 
-set = ["train", "validation", "test"]
-ed_start = [0, 5000, 6000]
-ed_end = [5000, 6000, 17000]
+set = ["train", "validation"] # "test"
+ed_start = [0, 2000, 2234]
+ed_end = [2000, 2235, 2235]
 
 #ed_start = [0, 1500, 2000]
 #ed_end = [1500, 2000, 3000]
@@ -86,6 +87,6 @@ for i in range(len(set)):
 
     #dataset = Dataset.from_dict(dict)
     # local: '../', remote: ''
-    f = open(f"{load_path_prefix}modeldata/sp_token_ws_empathy_clean_count_top{top_count}_score{threshold}_emo_{set[i]}_ED_dataset.p", 'wb')# _dis_score
+    f = open(f"{load_path_prefix}modeldata/sp_token_ws_empathy_clean_count_top{top_count}_score{threshold}_emo_{set[i]}_AM_dataset.p", 'wb')# _dis_score
     pickle.dump([dict], f)
     f.close()
