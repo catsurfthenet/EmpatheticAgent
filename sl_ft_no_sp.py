@@ -14,6 +14,9 @@ from tqdm import tqdm
 from torch.nn.utils.rnn import pad_sequence
 import torch.nn.functional as F
 
+# Code written and modified with guidance of
+# https://huggingface.co/docs/transformers/training
+
 # define hyperparameters and variables
 load_path_prefix = ""
 model_id = f"{load_path_prefix}models/local-facebook-blenderbot-400M-distill"#"EleutherAI/gpt-neo-125m"#  #"microsoft/DialoGPT-small",

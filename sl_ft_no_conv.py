@@ -15,6 +15,9 @@ from tqdm import tqdm
 from torch.nn.utils.rnn import pad_sequence
 import time
 
+# Code written and modified with guidance of
+# https://huggingface.co/docs/transformers/training
+
 # define hyperparameters and variables
 load_path_prefix = ""
 config = PPOConfig(

@@ -13,6 +13,9 @@ from transformers import get_scheduler
 from tqdm import tqdm
 from torch.nn.utils.rnn import pad_sequence
 
+# Code written and modified with guidance of
+# https://huggingface.co/docs/transformers/training
+
 # define hyperparameters and variables
 load_path_prefix = ""
 config = PPOConfig(
