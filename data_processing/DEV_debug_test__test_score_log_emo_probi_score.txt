@@ -1,3 +1,0 @@
-Mean BLEU of this model: 0.07200300402392508. 
-Emo distribution similarity of this model: 0.8079728022371706. 
-Score of this model: 0.2191969636665742. 
