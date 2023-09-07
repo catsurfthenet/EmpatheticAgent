@@ -1,0 +1,95 @@
+FT Model name: w1-1-1-1-0_50epochs-4250-loss1.32314 
+Context: We are planing on going on a cruise this December. It has been so fun planning the whole trip out. 
+
+Prompt:  We are planning on going on a cruise in December! 
+
+Response 1:  I would love to go on one of those cruises! I have never been on one before. 
+
+Response 2:  That sounds like a lot of fun! I hope you have a great time! Where are you going? 
+
+
+Context: I lost my car keys. I'm furious with myself. 
+
+Prompt:  I lost my car keys. I'm such a fool! 
+
+Response 1:  I'm sorry to hear that.  What happened?  Did something happen to you? 
+
+Response 2:  That's terrible! I'm sorry to hear that. Did you end up finding them? 
+
+
+Context: I am happy with where I live, my house, my income, and I'm grateful to God. 
+
+Prompt:  I feel happy about the new house I have and that I can work from home. Thanks be to God 
+
+Response 1:  That's great! I'm happy for you. What do you do for a living?  
+
+Response 2:  That's great! I'm happy for you. Is it your first time buying a home? 
+
+
+Context: I woke up the other morning, got ready and drove all the way to work. Just to find out it was a holiday and we had the day off.  
+
+Prompt:  I woke up the other morning, got ready and drove all the way to work. Just to find out it was a holiday and we had the day off. 
+
+Response 1:  I'm sorry to hear that. I hope you can find a way to make it up to them. 
+
+Response 2:  That sounds like a lot of fun.  Did you have a good time?  What did you do? 
+
+
+Context: my dog is over at the vet for 4 days and it makes the house feel super lonely, i really am looking forward to my dog coming back 
+
+Prompt:  my dog is over at the vet for 4 days and makes the house feel so alone' 
+
+Response 1:  I'm sorry to hear that. I hope your dog makes a full recovery.  
+
+Response 2:  I'm sorry to hear that. I hope you feel better soon. What's wrong? 
+
+
+Context: I once accidentally ran down the battery on my car when I mid-judged how long I could run the radio for without the engine running. It was 5am and I was in the middle of nowhere. I called the first person I could think of who could help and they came with crocodile clips and recharged the battery. I felt so grateful to be on the receiving end of a kind act. I was also embarrassed that I had let that happen and I learned from it!  
+
+Prompt:  That sounds like a really stressful situation. It's really good to know that there are still helpful people out there! 
+
+Response 1:  I know, I am so grateful for them. I was so scared I would never be able to get back on my feet again. 
+
+Response 2:  That's great! It's always good to have a backup plan in case of emergencies. 
+
+
+Context: I went to Aldi the other day and bought a bunch of German chocolate bars. I then sat and stuffed myself and now I feel really bad about it. No self-control! 
+
+Prompt:  It happens to the best of us. It would be great if they did not make us gain weight. 
+
+Response 1:  I'm sorry to hear that, I hope you can find something that works for you. 
+
+Response 2:  I agree, it would be nice if we didn't have to worry about being overweight. 
+
+
+Context: Recently we had a 7 hour drive to get to our vacation spot, the rain was heavy and so was the traffic on the drive there. It made me very nervous! 
+
+Prompt:  I just got back from our vacation, but the drive there was so nerve wracking. There was heavy rain and traffic, and some nighttime driving. Had me on edge 
+
+Response 1:  That must have been nerve-wracking. I'm glad you made it safely! 
+
+Response 2:  Oh no, I'm sorry to hear that. Did you end up making it home okay? 
+
+
+Random order (0-FT, 1-PLM): [1, 1, 1, 0, 0, 1, 0, 0]
+
+Context: I was most taken aback to learn that someone was not who I thought they were. It was more a statement on how I chose to see them, rather anything that was their fault. A good lesson. 
+
+Prompt:  Well, in a sense. But to be fair, I may have had my own "vision" of who they were and held them to that standard -- not really seeing them for who they were. I have to accept some responsibility for that, you know? 
+
+Response 1:  Yeah, I know what you mean. It's hard to know who they really are sometimes. 
+
+Response 2:  I know exactly what you mean. It's hard to know who to trust these days. 
+
+
+Context: My four year old daughter came up to me and said she thought daddy needed a huge and kiss.  She then jumped in my lap and proceeded to pepper my cheeck with kisses. 
+
+Prompt:  My four year old daughter came up and told me she thought I needed a big hug and kiss. 
+
+Response 1:  Aww, that's so sweet! How old is she? I bet you were so happy! 
+
+Response 2:  That is so sweet! I bet you are so proud of her. How old is she? 
+
+
+Random order (0-FT, 1-PLM): [1, 1]
+
