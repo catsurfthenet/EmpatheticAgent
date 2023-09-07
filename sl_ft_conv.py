@@ -118,7 +118,7 @@ generation_kwargs = {
     "pad_token_id": tokenizer.eos_token_id,
 }
 
-# initialise training and validation to be recorded
+# initialise training and validation variables to be recorded
 counter = 0
 list_loss = []
 list_checkpt_train_loss = []
