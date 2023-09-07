@@ -17,7 +17,8 @@ from torch.nn.utils.rnn import pad_sequence
 # define hyperparameters and variables
 load_path_prefix = ""
 config = PPOConfig(
-    model_name=f"{load_path_prefix}models/local-facebook-blenderbot-400M-distill",
+    #model_name=f"{load_path_prefix}models/local-facebook-blenderbot-400M-distill",
+    model_name="facebook/blenderbot-400M-distill",
     learning_rate=1e-6,
 )
 SAVE_MODEL = True
@@ -75,14 +76,17 @@ token_ids = list(range(0, len(tokenizer)))
 token_freq = dict(zip(token_ids, zeros))
 
 # load emotion classification model
-emo_model_id = f"{load_path_prefix}models/local-SamLowe-roberta-base-go_emotions"
+#emo_model_id = f"{load_path_prefix}models/local-SamLowe-roberta-base-go_emotions"
+emo_model_id = f"SamLowe/roberta-base-go_emotions"
 emo_tokenizer = AutoTokenizer.from_pretrained(emo_model_id)
 emo_model = AutoModelForSequenceClassification.from_pretrained(emo_model_id, torch_dtype=torch.float32).to(device)
 emo_classifier = pipeline('text-classification', model=emo_model_id, tokenizer=emo_model_id, max_length=128, truncation=True, top_k=None, device=0) #, device=0
 
 # load BERT model
-bert_model = BertModel.from_pretrained(f"{load_path_prefix}models/local-bert-base-uncased").to(device)
-bert_tokenizer = BertTokenizer.from_pretrained(f"{load_path_prefix}models/local-bert-base-uncased")
+#bert_model = BertModel.from_pretrained(f"{load_path_prefix}models/local-bert-base-uncased").to(device)
+#bert_tokenizer = BertTokenizer.from_pretrained(f"{load_path_prefix}models/local-bert-base-uncased")
+bert_model = BertModel.from_pretrained("bert-base-uncased")
+bert_tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 cos = torch.nn.CosineSimilarity() #dim=1
 
 # load optimizer
