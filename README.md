@@ -12,6 +12,10 @@ See: https://github.com/YJiangcm/PromCSE
 See: https://github.com/google-research/bleurt
 
 ## Download Datasets and Empathy Classifier
+Link: https://drive.google.com/drive/folders/1bpCX6n6ew0-MirGS7rmoFf9y-oySSa4H 
+
+Create directory `/models` and put the empathy classifier there.
+Create directory `/modeldata/` and put the datasets there.
 
 ## Training Code
 It is recommended to run the supervised learning approach 
