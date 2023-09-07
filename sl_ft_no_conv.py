@@ -6,8 +6,7 @@ from torch.optim.lr_scheduler import ExponentialLR, CosineAnnealingLR
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, pipeline, AutoModelForSequenceClassification, \
     RobertaTokenizerFast, RobertaForSequenceClassification, BertModel, BertTokenizer
 from trl import PPOConfig
-from helper import build_train_dataset, build_pad_dataset, padding, build_pretrain_dataset, get_mean, get_emo_counts, \
-    get_js_distance, get_FACE_loss, ngram_penalty
+from helper import build_pretrain_dataset, get_mean, get_emo_counts, get_FACE_loss
 from torch.utils.data import DataLoader
 import torch.nn.utils.rnn as rnn_utils
 from torch.optim import Adam, AdamW, SGD

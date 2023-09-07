@@ -38,10 +38,7 @@ from trl import AutoModelForCausalLMWithValueHead, PPOConfig, PPOTrainer, create
     AutoModelForSeq2SeqLMWithValueHead
 from trl.core import LengthSampler
 import numpy as np
-from helper import (build_dataset, build_pad_dataset, build_train_dataset, get_mean,
-                    weighted_bleu_score, get_js_distance, emo_dis_ppl, emo_dis_ppl_toxic,
-                    load_toxicity_classifier, load_empathy_classifier, load_emo_classifier, emo_dis_bleu, append_scores,
-                    emo_count_ppl_toxic, get_empathy_ratio, build_dataset_no_token, get_FACE_reward, get_FACE_loss)
+from helper import (get_mean, emo_count_ppl_toxic, get_empathy_ratio, build_dataset_no_token, get_FACE_reward)
 tqdm.pandas()
 
 # this code is modified from a huggingface PPO usage example
@@ -121,14 +118,6 @@ class ScriptArguments:
 
 """
 Padding function, pad tensors so that all tensors in list have same dimension
-
-Parameters:
-data: list of tensors
-    input to be padded
-    
-Return 
-padded: list of tensors
-    padded list of tensors
 """
 def padding(data):
     padded = rnn_utils.pad_sequence(data)
