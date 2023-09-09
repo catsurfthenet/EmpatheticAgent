@@ -21,8 +21,8 @@ import torch.nn.functional as F
 load_path_prefix = ""
 model_id = f"{load_path_prefix}models/local-facebook-blenderbot-400M-distill"#"EleutherAI/gpt-neo-125m"#  #"microsoft/DialoGPT-small",
 config = PPOConfig(
-    model_name=f"{load_path_prefix}models/local-facebook-blenderbot-400M-distill",
-    #model_name="facebook/blenderbot-400M-distill",
+    #model_name=f"{load_path_prefix}models/local-facebook-blenderbot-400M-distill",
+    model_name="facebook/blenderbot-400M-distill",
     learning_rate=1e-6,
 )
 SAVE_MODEL = False
@@ -82,8 +82,8 @@ for repeat_num in range(total_repeat_num):
     token_freq = dict(zip(token_ids, zeros))
 
     # load emotion classification model
-    emo_model_id = f"{load_path_prefix}models/local-SamLowe-roberta-base-go_emotions"
-    #emo_model_id = f"SamLowe/roberta-base-go_emotions"
+    #emo_model_id = f"{load_path_prefix}models/local-SamLowe-roberta-base-go_emotions"
+    emo_model_id = f"SamLowe/roberta-base-go_emotions"
     emo_tokenizer = AutoTokenizer.from_pretrained(emo_model_id)
     emo_model = AutoModelForSequenceClassification.from_pretrained(emo_model_id, torch_dtype=torch.float32).to(device)
     emo_classifier = pipeline('text-classification', model=emo_model_id, tokenizer=emo_model_id, max_length=128, truncation=True, top_k=None, device=0) #
