@@ -3,7 +3,7 @@
 ## Download Packages
 `pip install requirements.txt`
 
-If encountered any issues please contact me at: cn222@ic.ac.uk
+If any issue is encountered please contact me at: sadkitty08@gmail.com
 
 ## Download PromCSE
 See: https://github.com/YJiangcm/PromCSE
